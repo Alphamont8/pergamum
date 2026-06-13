@@ -1,0 +1,134 @@
+/* Platform palette — primary #5762D5 */
+[data-theme='light'] {
+  color-scheme: light;
+
+  --primary: #5762d5;
+  --primary-hover: #4a54be;
+  --primary-muted: #6e78dc;
+  --primary-subtle: rgba(87, 98, 213, 0.12);
+  --primary-subtle-hover: rgba(87, 98, 213, 0.18);
+
+  --app-bg: #f6f9fc;
+  --sidebar-shell-bg: #f6f9fc;
+  --sidebar-bg: #ffffff;
+  --sidebar-border: #e3e8ee;
+  --sidebar-text: #1a1f36;
+  --sidebar-text-muted: #4f566b;
+  --sidebar-text-faint: #697386;
+  --sidebar-hover: #f0f3f9;
+  --sidebar-active-bg: var(--primary-subtle);
+  --sidebar-active-text: var(--primary);
+
+  --surface-bg: #ffffff;
+  --surface-border: #e3e8ee;
+  --surface-text: #1a1f36;
+  --surface-text-muted: #4f566b;
+  --surface-text-faint: #697386;
+  --surface-hover: #f7fafc;
+  --accent: var(--primary);
+  --accent-hover: var(--primary-hover);
+  --accent-subtle: var(--primary-subtle);
+
+  --workspace-bg: #ffffff;
+  --workspace-header-bg: #f6f9fc;
+  --workspace-tab-inactive: #eef2f7;
+  --workspace-surface: #ffffff;
+  --workspace-surface-hover: #f0f3f9;
+  --workspace-border: #e3e8ee;
+  --workspace-border-subtle: #eef2f7;
+  --workspace-text: #1a1f36;
+  --workspace-text-muted: #4f566b;
+  --workspace-text-faint: #697386;
+  --workspace-accent: var(--primary);
+  --workspace-accent-hover: var(--primary-hover);
+  --workspace-accent-subtle: var(--primary-subtle);
+  --workspace-link: var(--primary);
+  --workspace-focus-ring: rgba(87, 98, 213, 0.35);
+  --workspace-shadow: 0 1px 3px rgba(26, 31, 54, 0.06), 0 1px 2px rgba(26, 31, 54, 0.04);
+  --workspace-radius: 12px;
+  --content-gutter: 24px;
+  --page-title-size: 1.25rem;
+  --page-title-weight: 550;
+  --nav-label-weight: 450;
+  --nav-label-weight-active: 500;
+  --nav-icon-stroke: 1.5;
+
+  --color-bg-solid: #f6f9fc;
+  --color-text: #1a1f36;
+  --color-text-muted: #4f566b;
+  --color-text-faint: #697386;
+  --color-btn-fill: var(--primary);
+  --color-btn-text: #ffffff;
+  --color-btn-fill-hover: var(--primary-hover);
+  --color-highlight: var(--primary-subtle);
+
+  --glass-border: #e3e8ee;
+  --edge-glint: none;
+}
+
+[data-theme='dark'] {
+  color-scheme: dark;
+
+  --primary: #5762d5;
+  --primary-hover: #6e78dc;
+  --primary-muted: #959de8;
+  --primary-subtle: rgba(87, 98, 213, 0.2);
+  --primary-subtle-hover: rgba(87, 98, 213, 0.28);
+
+  --app-bg: #0a0d11;
+  --sidebar-shell-bg: #0a0d11;
+  --sidebar-bg: #13161c;
+  --sidebar-border: #2a2f3a;
+  --sidebar-text: #f7fafc;
+  --sidebar-text-muted: #a3acba;
+  --sidebar-text-faint: #6b7380;
+  --sidebar-hover: #1a1f28;
+  --sidebar-active-bg: var(--primary-subtle);
+  --sidebar-active-text: var(--primary-muted);
+
+  --surface-bg: #161b22;
+  --surface-border: #2a2f3a;
+  --surface-text: #f7fafc;
+  --surface-text-muted: #a3acba;
+  --surface-text-faint: #6b7380;
+  --surface-hover: #1e2430;
+  --accent: var(--primary-muted);
+  --accent-hover: #a8aff0;
+  --accent-subtle: var(--primary-subtle);
+
+  --workspace-bg: #161b22;
+  --workspace-header-bg: #13161c;
+  --workspace-tab-inactive: #1e2430;
+  --workspace-surface: #1a1f28;
+  --workspace-surface-hover: #242b38;
+  --workspace-border: #2a2f3a;
+  --workspace-border-subtle: #232833;
+  --workspace-text: #f7fafc;
+  --workspace-text-muted: #a3acba;
+  --workspace-text-faint: #6b7380;
+  --workspace-accent: var(--primary-muted);
+  --workspace-accent-hover: #a8aff0;
+  --workspace-accent-subtle: var(--primary-subtle);
+  --workspace-link: var(--primary-muted);
+  --workspace-focus-ring: rgba(87, 98, 213, 0.45);
+  --workspace-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  --workspace-radius: 12px;
+  --content-gutter: 24px;
+  --page-title-size: 1.25rem;
+  --page-title-weight: 550;
+  --nav-label-weight: 450;
+  --nav-label-weight-active: 500;
+  --nav-icon-stroke: 1.5;
+
+  --color-bg-solid: #0a0d11;
+  --color-text: #f7fafc;
+  --color-text-muted: #a3acba;
+  --color-text-faint: #6b7380;
+  --color-btn-fill: var(--primary);
+  --color-btn-text: #ffffff;
+  --color-btn-fill-hover: var(--primary-hover);
+  --color-highlight: var(--primary-subtle);
+
+  --glass-border: rgba(255, 255, 255, 0.1);
+  --edge-glint: none;
+}

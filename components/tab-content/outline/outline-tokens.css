@@ -1,0 +1,168 @@
+/* Outline page spacing — mirrors Blueprint tokens */
+.outline-tab {
+  --bp-page-x: 16px;
+  --bp-page-y: 12px;
+  --bp-pane-gap: 10px;
+  --bp-section-gap: 10px;
+  --bp-card-pad-y: 12px;
+  --bp-card-pad-x: 12px;
+  --bp-inner-gap: 8px;
+  --bp-label-gap: 2px;
+  --bp-primary-btn-gap: 8px;
+  --bp-field-indent: 4px;
+  --bp-bar-track-inset: 8px;
+  --bp-dropdown-option-pad-y: 6px;
+  --bp-control-pad-y: 8px;
+  --bp-control-pad-x: 10px;
+  --bp-control-height: 36px;
+  --bp-footer-btn-height: 36px;
+  --bp-footer-btn-pad-y: 7px;
+  --bp-footer-btn-pad-x: 12px;
+  --bp-footer-btn-radius: 8px;
+  --bp-radius-card: 10px;
+  --bp-radius-control: 6px;
+  --bp-radius-btn: 6px;
+  --bp-header-pad-bottom: 8px;
+  --bp-divider-gap: 10px;
+  --bp-footer-pad-top: 4px;
+  --bp-hint-lines: 2;
+  --bp-hint-line-height: 1.2;
+  --bp-hint-font-size: 0.625rem;
+  --bp-title-size: 1.375rem;
+  --bp-title-weight: 600;
+  --bp-title-tracking: -0.03em;
+  --bp-section-label-size: 0.625rem;
+  --bp-section-label-tracking: 0.08em;
+  --bp-field-label-size: 0.8125rem;
+  --ol-indent: 18px;
+}
+
+.outline-tab .bp-card {
+  margin: 0;
+  padding: var(--bp-card-pad-y) var(--bp-card-pad-x);
+  border: 1px solid var(--workspace-border);
+  border-radius: var(--bp-radius-card);
+  background: var(--workspace-surface);
+  box-sizing: border-box;
+}
+
+.outline-tab .bp-section-label {
+  display: block;
+  margin: 0 0 var(--bp-inner-gap);
+  padding: 0 0 0 var(--bp-field-indent);
+  font-size: var(--bp-section-label-size);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--bp-section-label-tracking);
+  color: var(--workspace-text-muted);
+  line-height: 1.3;
+}
+
+.outline-tab .bp-field-label {
+  display: block;
+  margin: 0 0 var(--bp-label-gap);
+  padding: 0 0 0 var(--bp-field-indent);
+  font-size: var(--bp-field-label-size);
+  font-weight: 500;
+  color: var(--workspace-text-muted);
+  line-height: 1.3;
+}
+
+.outline-tab .bp-hint {
+  margin: 0 0 var(--bp-inner-gap);
+  padding: 0 0 0 var(--bp-field-indent);
+  font-size: var(--bp-hint-font-size);
+  line-height: var(--bp-hint-line-height);
+  color: var(--workspace-text-faint);
+}
+
+/* Description / empty state directly under a field label — same left edge as label text */
+.outline-tab .bp-field-body {
+  display: block;
+  margin: 0;
+  padding: 0 0 0 var(--bp-field-indent);
+  font-size: 0.75rem;
+  line-height: 1.35;
+  color: var(--workspace-text-faint);
+}
+
+.outline-tab .bp-input {
+  box-sizing: border-box;
+  width: 100%;
+  height: var(--bp-control-height);
+  margin: 0;
+  padding: 0 var(--bp-control-pad-x);
+  border: 1px solid var(--workspace-border);
+  border-radius: var(--bp-radius-control);
+  background: var(--workspace-header-bg);
+  color: var(--workspace-text);
+  font-size: 0.8125rem;
+  line-height: 1.25;
+}
+
+.outline-tab .bp-textarea {
+  box-sizing: border-box;
+  width: 100%;
+  margin: 0;
+  padding: var(--bp-control-pad-y) var(--bp-control-pad-x);
+  border: 1px solid var(--workspace-border);
+  border-radius: var(--bp-radius-control);
+  background: var(--workspace-header-bg);
+  color: var(--workspace-text);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+
+.outline-tab .bp-input:focus,
+.outline-tab .bp-textarea:focus {
+  outline: none;
+  border-color: var(--workspace-accent);
+  box-shadow: 0 0 0 2px var(--workspace-focus-ring);
+}
+
+.outline-tab .bp-btn-secondary {
+  margin: 0;
+  padding: 5px 10px;
+  border: 1px solid var(--workspace-border);
+  border-radius: var(--bp-radius-btn);
+  background: var(--workspace-surface);
+  color: var(--workspace-text-muted);
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+.outline-tab .bp-btn-secondary:hover:not(:disabled) {
+  background: var(--workspace-surface-hover);
+  color: var(--workspace-text);
+}
+
+.outline-tab .bp-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--bp-primary-btn-gap);
+  width: 100%;
+  height: auto;
+  min-height: calc(var(--bp-footer-btn-pad-y) * 2 + 20px + 2px);
+  margin: 0;
+  padding: var(--bp-footer-btn-pad-y) var(--bp-footer-btn-pad-x);
+  border: 1px solid transparent;
+  border-radius: var(--bp-footer-btn-radius);
+  background: var(--color-btn-fill, var(--workspace-accent));
+  color: var(--color-btn-text, #fff);
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.25;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+
+.outline-tab .bp-btn-primary:hover:not(:disabled) {
+  background: var(--color-btn-fill-hover, var(--workspace-accent-hover));
+}
+
+.outline-tab .bp-btn-primary:disabled {
+  opacity: 0.5;
+}

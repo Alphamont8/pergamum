@@ -1,0 +1,218 @@
+.outline-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.outline-panel--empty,
+.outline-panel--locked {
+  align-items: center;
+  justify-content: center;
+}
+
+.outline-panel__placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  margin: 0;
+  padding: var(--bp-card-pad-y) var(--bp-card-pad-x);
+  max-width: 20rem;
+}
+
+.outline-panel__placeholder-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  margin: 0 0 var(--bp-inner-gap);
+  padding: 0;
+  border-radius: var(--bp-radius-card);
+  background: var(--workspace-accent-subtle);
+  color: var(--workspace-accent);
+}
+
+.outline-panel__placeholder-title {
+  margin: 0 0 var(--bp-label-gap);
+  padding: 0;
+  font-size: 1rem;
+  font-weight: 550;
+  color: var(--workspace-text);
+  line-height: 1.3;
+}
+
+.outline-panel__placeholder-text {
+  margin: 0;
+  padding: 0;
+  font-size: 0.875rem;
+  line-height: 1.55;
+  color: var(--workspace-text-muted);
+}
+
+.outline-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--bp-inner-gap);
+  flex-shrink: 0;
+  margin: 0 0 var(--bp-section-gap);
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.outline-panel__stats {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  flex: 1;
+  padding-left: 4px;
+  font-size: 0.625rem;
+  color: var(--workspace-text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.outline-panel__stat strong {
+  color: var(--workspace-text-muted);
+  font-weight: 600;
+}
+
+.outline-panel__header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.outline-panel__header-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  margin: 0;
+  padding: 5px 10px;
+  border: 1px solid var(--workspace-border);
+  border-radius: var(--bp-radius-btn);
+  background: var(--workspace-surface);
+  color: var(--workspace-text-muted);
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.2;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.outline-panel__header-btn:hover {
+  background: var(--workspace-surface-hover);
+  color: var(--workspace-text);
+}
+
+.outline-panel__header-btn--active {
+  border-color: var(--workspace-accent);
+  background: var(--workspace-accent-subtle);
+  color: var(--workspace-accent);
+}
+
+.outline-panel__header-btn:disabled {
+  opacity: 0.45;
+}
+
+.outline-panel__scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  margin: 0;
+  padding: 0 0 12px;
+  box-sizing: border-box;
+}
+
+.outline-panel__sections {
+  display: flex;
+  flex-direction: column;
+  gap: var(--bp-section-gap);
+}
+
+.outline-section-box {
+  margin: 0;
+}
+
+.outline-section-box__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--bp-inner-gap);
+  margin: 0 0 var(--bp-inner-gap);
+  padding: 0;
+}
+
+.outline-section-box__heading {
+  margin: 0;
+  padding: 0 0 0 4px;
+  font-size: var(--bp-section-label-size);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--bp-section-label-tracking);
+  color: var(--workspace-text-muted);
+  line-height: 1.3;
+}
+
+.outline-section-box__add-point {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--workspace-border);
+  border-radius: var(--bp-radius-control);
+  background: var(--workspace-surface);
+  color: var(--workspace-text-muted);
+  cursor: pointer;
+}
+
+.outline-section-box__add-point:hover {
+  border-color: var(--workspace-accent);
+  color: var(--workspace-accent);
+  background: var(--workspace-accent-subtle);
+}
+
+.outline-section-box__body {
+  margin: 0;
+  padding: 0;
+}
+
+.outline-section-box__empty {
+  margin: 0;
+  padding-block: 2px;
+}
+
+@keyframes outline-panel-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.outline-panel__spin {
+  animation: outline-panel-spin 0.8s linear infinite;
+}
+
+.outline-panel__footer {
+  flex-shrink: 0;
+  margin: 0;
+  padding: 8px 0 0;
+  background: var(--workspace-bg);
+  box-sizing: border-box;
+}

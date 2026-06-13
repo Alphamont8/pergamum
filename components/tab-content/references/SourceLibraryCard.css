@@ -1,0 +1,93 @@
+.source-lib-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--workspace-border);
+  border-radius: var(--bp-radius-card);
+  background: var(--workspace-surface);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.source-lib-card:hover {
+  background: var(--workspace-surface-hover);
+}
+
+.source-lib-card--selected {
+  border-color: var(--workspace-accent);
+  background: var(--workspace-accent-subtle);
+}
+
+.source-lib-card__icon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: var(--workspace-header-bg);
+  color: var(--workspace-text-muted);
+}
+
+.source-lib-card__favicon {
+  display: block;
+  width: 16px;
+  height: 16px;
+  border-radius: 2px;
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+}
+
+.source-lib-card__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.source-lib-card__title {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--workspace-text);
+}
+
+.source-lib-card__meta {
+  margin: 2px 0 0;
+  font-size: 0.6875rem;
+  color: var(--workspace-text-faint);
+  line-height: 1.35;
+}
+
+.source-lib-card__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.source-lib-card__badge {
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 0.6rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: var(--workspace-header-bg);
+  color: var(--workspace-text-muted);
+}
+
+.source-lib-card__badge--peer {
+  color: var(--ref-reliability-strong);
+}
+
+.source-lib-card__badge--oa {
+  color: var(--ref-reliability-good);
+}
+
+.source-lib-card__badge--via {
+  text-transform: none;
+  font-weight: 500;
+}

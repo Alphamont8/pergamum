@@ -1,0 +1,65 @@
+.export-menu {
+  position: relative;
+}
+
+.export-menu__trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.export-menu__panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 50;
+  min-width: 220px;
+  padding: 10px;
+  border: 1px solid var(--workspace-border);
+  border-radius: var(--bp-radius-card);
+  background: var(--workspace-surface);
+  box-shadow: var(--workspace-shadow);
+}
+
+.export-menu__options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--workspace-border);
+  font-size: 0.75rem;
+  color: var(--workspace-text-muted);
+}
+
+.export-menu__options label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.export-menu__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.export-menu__action {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--workspace-text);
+  font-size: 0.8125rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.export-menu__action:hover {
+  background: var(--workspace-surface-hover);
+}

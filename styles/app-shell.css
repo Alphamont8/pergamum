@@ -1,0 +1,49 @@
+.app {
+  position: relative;
+  width: 100%;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--app-bg);
+  isolation: isolate;
+  overflow: hidden;
+}
+
+.app-shell {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: var(--app-margin);
+  padding: var(--app-margin);
+  box-sizing: border-box;
+}
+
+.app-shell__sidebar {
+  flex-shrink: 0;
+  width: 248px;
+  min-height: 0;
+  align-self: stretch;
+  display: flex;
+  transition: width 0.2s ease;
+}
+
+.app-shell__sidebar:has(.app-sidebar--collapsed) {
+  width: 60px;
+}
+
+.app-shell .app-sidebar {
+  flex: 1;
+  min-height: 0;
+}
+
+.app-shell .main-workspace__panel > *:not(.blueprint-tab):not(.outline-tab):not(.draft-tab) {
+  padding-bottom: 24px;
+  box-sizing: border-box;
+}
+
+.app-shell .main-workspace__panel > .blueprint-tab,
+.app-shell .main-workspace__panel > .outline-tab,
+.app-shell .main-workspace__panel > .draft-tab {
+  padding-bottom: 12px;
+  box-sizing: border-box;
+}

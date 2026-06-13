@@ -1,0 +1,332 @@
+.outline-node-row,
+.outline-point-block {
+  --ol-drag-col: 20px;
+  --ol-icon-col: 20px;
+  --ol-actions-col: 40px;
+  --ol-row-pad-y: 4px;
+  --ol-row-pad-x: 6px;
+  --ol-block-pad: 4px;
+  --ol-point-font: 0.8125rem;
+  --ol-sub-font: 0.75rem;
+  --ol-line-h: 1.4;
+  --ol-point-row-h: calc(var(--ol-point-font) * var(--ol-line-h) + var(--ol-row-pad-y) * 2);
+  --ol-sub-row-min-h: calc(var(--ol-sub-font) * var(--ol-line-h) + var(--ol-row-pad-y) * 2);
+  --ol-sub-row-max-h: calc(var(--ol-sub-font) * var(--ol-line-h) * 4 + var(--ol-row-pad-y) * 2);
+  position: relative;
+  margin: 0;
+  padding: 0;
+}
+
+.outline-node-row__drop-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  pointer-events: none;
+  opacity: 0;
+  background: var(--workspace-accent);
+  border-radius: 1px;
+  z-index: 4;
+}
+
+.outline-point-block--edit .outline-node-row__drop-line {
+  height: 2px;
+  padding: 5px 0;
+  margin: -5px 0;
+  box-sizing: content-box;
+  pointer-events: auto;
+  background-color: transparent;
+}
+
+.outline-node-row__drop-line--before {
+  top: -1px;
+}
+
+.outline-point-block--edit .outline-node-row__drop-line--before {
+  top: -6px;
+}
+
+.outline-node-row__drop-line--after {
+  bottom: -1px;
+}
+
+.outline-point-block--edit .outline-node-row__drop-line--after {
+  bottom: -6px;
+}
+
+.outline-node-row--drop-before > .outline-node-row__drop-line--before,
+.outline-node-row--drop-after > .outline-node-row__drop-line--after,
+.outline-point-block--drop-before > .outline-node-row__drop-line--before,
+.outline-point-block--drop-after > .outline-node-row__drop-line--after {
+  opacity: 1;
+  background-color: var(--workspace-accent);
+  background-clip: content-box;
+}
+
+.outline-point-block--drop-inside .outline-point-block__surface {
+  box-shadow: inset 0 0 0 2px var(--workspace-accent);
+  background: var(--workspace-accent-subtle);
+}
+
+.outline-point-block {
+  position: relative;
+  margin: 0 0 4px;
+}
+
+.outline-point-block__surface {
+  margin: 0;
+  padding: var(--ol-block-pad);
+  border-radius: var(--bp-radius-control);
+  transition: background 0.12s ease, box-shadow 0.12s ease;
+}
+
+.outline-point-block__surface:hover {
+  background: var(--workspace-surface-hover);
+}
+
+.outline-point-block--selected .outline-point-block__surface {
+  background: var(--workspace-surface-hover);
+  box-shadow: inset 0 0 0 1px var(--workspace-accent);
+}
+
+.outline-point-block--dragging .outline-point-block__surface {
+  opacity: 0.45;
+}
+
+.outline-point-block__subs {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 4px 0 0;
+  padding: 0 0 0 var(--ol-icon-col);
+}
+
+.outline-node-row--subpoint {
+  margin: 0;
+}
+
+.outline-node-row--subpoint .outline-node-row__main {
+  margin: 0;
+  padding: 2px 4px;
+  border: 1px solid var(--workspace-border);
+  border-radius: var(--bp-radius-control);
+  background: color-mix(in srgb, var(--workspace-surface) 88%, var(--workspace-bg));
+  transition: background 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
+}
+
+.outline-node-row--subpoint .outline-node-row__main:hover {
+  border-color: color-mix(in srgb, var(--workspace-border) 70%, var(--workspace-text-faint));
+  background: var(--workspace-surface-hover);
+}
+
+.outline-node-row__head {
+  display: grid;
+  align-items: flex-start;
+  gap: 0;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.outline-node-row__head > .outline-node-row__text {
+  align-self: start;
+}
+
+.outline-node-row--point.outline-node-row--no-edit .outline-node-row__head {
+  grid-template-columns: var(--ol-icon-col) minmax(0, 1fr) var(--ol-actions-col);
+}
+
+.outline-node-row--point.outline-node-row--edit .outline-node-row__head {
+  grid-template-columns: var(--ol-drag-col) var(--ol-icon-col) minmax(0, 1fr) var(--ol-actions-col);
+}
+
+.outline-node-row--subpoint.outline-node-row--no-edit .outline-node-row__head {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.outline-node-row--subpoint.outline-node-row--edit .outline-node-row__head {
+  grid-template-columns: var(--ol-drag-col) minmax(0, 1fr);
+}
+
+.outline-node-row__drag-btn,
+.outline-node-row__collapse-btn,
+.outline-node-row__action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: start;
+  flex-shrink: 0;
+  width: var(--ol-icon-col);
+  height: var(--ol-point-row-h);
+  min-height: var(--ol-point-row-h);
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--workspace-text-muted);
+  cursor: grab;
+  box-sizing: border-box;
+  touch-action: none;
+  user-select: none;
+}
+
+.outline-node-row__collapse-btn,
+.outline-node-row__action-btn {
+  cursor: pointer;
+}
+
+.outline-node-row__drag-btn:hover,
+.outline-node-row__collapse-btn:hover {
+  color: var(--workspace-text);
+}
+
+.outline-node-row__drag-btn:active {
+  cursor: grabbing;
+}
+
+.outline-node-row__action-btn {
+  width: 20px;
+  height: var(--ol-point-row-h);
+  margin: 0;
+  border-radius: 4px;
+  color: var(--workspace-text-faint);
+}
+
+.outline-node-row__action-btn:hover {
+  background: var(--workspace-surface);
+  color: var(--workspace-text-muted);
+}
+
+.outline-node-row--point .outline-node-row__text {
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  min-width: 0;
+  min-height: var(--ol-point-row-h);
+  margin: 0;
+  padding: var(--ol-row-pad-y) var(--ol-row-pad-x);
+  border: 1px solid transparent;
+  border-radius: var(--bp-radius-control);
+  overflow: hidden;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  font-size: var(--ol-point-font);
+  font-weight: 500;
+  line-height: var(--ol-line-h);
+  color: var(--workspace-text);
+  background: transparent;
+  cursor: pointer;
+}
+
+.outline-node-row--subpoint .outline-node-row__text {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  min-height: auto;
+  margin: 0;
+  padding: 2px 4px;
+  border: 1px solid transparent;
+  border-radius: var(--bp-radius-control);
+  overflow: hidden;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  font-size: var(--ol-sub-font);
+  font-weight: 400;
+  line-height: var(--ol-line-h);
+  color: var(--workspace-text-muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.outline-node-row__actions {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: 0;
+  min-width: var(--ol-actions-col);
+  padding: 0 4px 0 0;
+  box-sizing: border-box;
+}
+
+.outline-node-row__action-btn--delete:hover {
+  background: rgba(229, 62, 62, 0.08);
+  color: #e53e3e;
+}
+
+.outline-node-row__sources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 4px 0 0;
+  padding: 0 4px;
+}
+
+.outline-node-row__add-subpoint {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin: 0;
+  padding: 4px 8px;
+  border: 1px dashed var(--workspace-border);
+  border-radius: var(--bp-radius-control);
+  background: transparent;
+  color: var(--workspace-text-faint);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.outline-node-row__add-subpoint:hover {
+  border-color: var(--workspace-accent);
+  color: var(--workspace-accent);
+  background: var(--workspace-accent-subtle);
+}
+
+.outline-node-row__source-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  margin: 0;
+  padding: 3px 8px;
+  border: 1px solid var(--workspace-border);
+  border-radius: 999px;
+  background: var(--workspace-header-bg);
+  font-size: 0.75rem;
+  color: var(--workspace-text-muted);
+  cursor: pointer;
+}
+
+.outline-node-row__source-chip:hover {
+  border-color: var(--workspace-accent);
+  color: var(--workspace-accent);
+}
+
+.outline-node-row__source-chip--active {
+  border-color: var(--workspace-accent);
+  background: var(--workspace-accent-subtle);
+  color: var(--workspace-accent);
+}
+
+.outline-node-row__source-chip-link {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 12rem;
+  color: inherit;
+  text-decoration: none;
+}
+
+.outline-node-row__children {
+  margin: 0;
+  padding: 0;
+}
+
+.outline-node-row--dragging .outline-node-row__main {
+  opacity: 0.45;
+}

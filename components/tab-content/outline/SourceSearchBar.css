@@ -1,0 +1,83 @@
+.source-search-bar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--bp-inner-gap);
+  margin: 0 0 var(--bp-section-gap);
+}
+
+.source-search-bar__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--bp-inner-gap);
+}
+
+.source-search-bar__header .bp-section-label {
+  margin: 0;
+}
+
+.source-search-bar__done {
+  flex-shrink: 0;
+  margin: 0;
+  padding: 3px 8px;
+  border: 1px solid var(--workspace-border);
+  border-radius: var(--bp-radius-btn);
+  background: transparent;
+  color: var(--workspace-text-muted);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+.source-search-bar__done:hover {
+  border-color: var(--workspace-accent);
+  color: var(--workspace-accent);
+}
+
+.source-search-bar__form {
+  display: flex;
+  gap: var(--bp-label-gap);
+}
+
+.source-search-bar__input {
+  flex: 1;
+  min-width: 0;
+}
+
+.source-search-bar__input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  height: 14px;
+  width: 14px;
+  background-color: var(--workspace-text-faint);
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M18 6 6 18M6 6l12 12'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M18 6 6 18M6 6l12 12'/%3E%3C/svg%3E");
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  cursor: pointer;
+}
+
+.source-search-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: var(--bp-control-height);
+  height: var(--bp-control-height);
+  padding: 0;
+  border: none;
+  border-radius: var(--bp-radius-btn);
+  background: var(--workspace-accent);
+  color: #fff;
+  cursor: pointer;
+}
+
+.source-search-icon-btn:disabled {
+  opacity: 0.5;
+}
+
+.source-search-bar__status {
+  margin: 0;
+  font-size: 0.6875rem;
+  color: var(--workspace-text-faint);
+}

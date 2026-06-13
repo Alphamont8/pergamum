@@ -1,0 +1,50 @@
+.resizable-split {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.resizable-split--dragging {
+  cursor: col-resize;
+  user-select: none;
+}
+
+.resizable-split__pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+.resizable-split__divider {
+  flex-shrink: 0;
+  width: 5px;
+  margin: 0 -2px;
+  cursor: col-resize;
+  background: transparent;
+  position: relative;
+  z-index: 2;
+  touch-action: none;
+}
+
+.resizable-split__divider::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 2px;
+  width: 1px;
+  background: var(--workspace-border);
+  transition: background 0.15s ease;
+}
+
+.resizable-split__divider:hover::after,
+.resizable-split--dragging .resizable-split__divider::after {
+  background: var(--workspace-accent);
+  width: 2px;
+  left: 1px;
+}
