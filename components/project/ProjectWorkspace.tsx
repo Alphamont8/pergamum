@@ -206,7 +206,7 @@ export function ProjectWorkspace({
             themePreference={ws.themePreference}
             onNavigate={onNavigate}
             onCycleTheme={ws.cycleTheme}
-            onUpgrade={() => router.push(isGuest ? '/signup' : '/billing')}
+            onUpgrade={() => router.push(isGuest ? '/login' : '/billing')}
           />
         </div>
         <MainWorkspace

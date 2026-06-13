@@ -22,7 +22,7 @@ export function navIdToPath(
   if (navId === 'leaderboard') return '/leaderboard'
   if (navId === 'settings') return guest ? '/login' : '/settings'
   if (navId === 'help') return '/help'
-  if (navId === 'billing') return guest ? '/signup' : '/billing'
+  if (navId === 'billing') return guest ? '/login' : '/billing'
   if (navId === 'blueprint') return projectPath(projectId, 'blueprint', guest)
   if (navId === 'outline') return projectPath(projectId, 'outline', guest)
   if (navId === 'draft') return projectPath(projectId, 'draft', guest)

@@ -1,8 +1,7 @@
 "use client"
 
 import { useEffect, useState } from 'react'
-import { clearGuestEssay } from '@/lib/guest/storage'
-import { createInitialEssayState } from '@/state/essayInitial'
+import { loadGuestEssay } from '@/lib/guest/storage'
 import { ProjectWorkspace } from './ProjectWorkspace'
 import type { EssayState } from '@/types'
 
@@ -14,12 +13,24 @@ export function GuestProjectWorkspace({ projectId }: GuestProjectWorkspaceProps)
   const [essay, setEssay] = useState<EssayState | null>(null)
 
   useEffect(() => {
-    clearGuestEssay(projectId)
-    setEssay(createInitialEssayState())
+    setEssay(loadGuestEssay(projectId))
   }, [projectId])
 
   if (!essay) {
-    return <div className="auth-page">Loading workspace…</div>
+    return (
+      <div
+        style={{
+          minHeight: '100vh',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: '#fff',
+          color: '#6b7280',
+        }}
+      >
+        Loading workspace…
+      </div>
+    )
   }
 
   return (

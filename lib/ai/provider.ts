@@ -4,21 +4,36 @@ import type { z } from 'zod'
 
 export const MODEL_ID = 'deepseek/deepseek-v4-flash'
 
-const gatewayClient = createOpenAI({
-  baseURL: 'https://ai-gateway.vercel.sh/v1',
-  apiKey: process.env.AI_GATEWAY_API_KEY,
-  compatibility: 'compatible',
-})
+function resolveGatewayApiKey(): string | undefined {
+  const key = process.env.AI_GATEWAY_API_KEY || process.env.VERCEL_OIDC_TOKEN
+  return key?.trim() || undefined
+}
+
+let gatewayClient: ReturnType<typeof createOpenAI> | null = null
+
+function getGatewayClient() {
+  const apiKey = resolveGatewayApiKey()
+  if (!apiKey) {
+    throw new Error(
+      'AI is not configured. Set AI_GATEWAY_API_KEY or deploy on Vercel with AI Gateway OIDC.',
+    )
+  }
+  if (!gatewayClient) {
+    gatewayClient = createOpenAI({
+      baseURL: 'https://ai-gateway.vercel.sh/v1',
+      apiKey,
+      compatibility: 'compatible',
+    })
+  }
+  return gatewayClient
+}
 
 export function getModel(): LanguageModel {
-  if (!process.env.AI_GATEWAY_API_KEY) {
-    throw new Error('AI_GATEWAY_API_KEY is not configured.')
-  }
-  return gatewayClient(MODEL_ID)
+  return getGatewayClient()(MODEL_ID)
 }
 
 export function isLlmConfigured(): boolean {
-  return Boolean(process.env.AI_GATEWAY_API_KEY)
+  return Boolean(resolveGatewayApiKey())
 }
 
 export interface LLMMessage {
