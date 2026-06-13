@@ -115,7 +115,7 @@ export interface UseWorkspaceOptions {
   subscriptionTier?: SubscriptionTier
   activeNavId?: AppNavId
   onNavigate?: (navId: AppNavId) => void
-  /** Not logged in: Basic tier, persist essay to localStorage only */
+  /** Not logged in: Pro tier, persist essay to localStorage only */
   guestMode?: boolean
 }
 
@@ -123,7 +123,7 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
   const {
     projectId,
     initialEssay,
-    subscriptionTier: tierProp = 'Plus',
+    subscriptionTier: tierProp = 'Pro',
     activeNavId: activeNavIdProp,
     onNavigate,
     guestMode = false,

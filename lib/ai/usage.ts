@@ -16,10 +16,11 @@ export type UsageFeature =
   | 'extract'
   | 'export'
 
+/** All tiers unlimited — quota checks are effectively disabled. */
 export const MONTHLY_USAGE_CAPS: Record<SubscriptionTier, number | null> = {
-  Basic: 30,
-  Plus: 300,
-  Pro: 1500,
+  Basic: null,
+  Plus: null,
+  Pro: null,
   Max: null,
 }
 

@@ -47,7 +47,7 @@ export function DraftDocument({
   onInsertCitation,
   onSelectionChange,
   onSuggestionClick,
-  subscriptionTier = 'Basic',
+  subscriptionTier = 'Pro',
   hasTextSelection = false,
   selectedText = null,
   onRunTool,

@@ -49,7 +49,7 @@ export function createInitialQuickSettings(): EssayBlueprint['quickSettings'] {
   }
 }
 
-export function createInitialWordLimit(planMax = PLAN_WORD_LIMITS.Plus): EssayBlueprint['wordLimit'] {
+export function createInitialWordLimit(planMax = PLAN_WORD_LIMITS.Pro): EssayBlueprint['wordLimit'] {
   const { min, max } = computeAutoWordLimit({
     instructionsText: '',
     documentType: 'Argumentative/Persuasive Essay',
@@ -65,7 +65,7 @@ export function createInitialWordLimit(planMax = PLAN_WORD_LIMITS.Plus): EssayBl
   }
 }
 
-export function createInitialBlueprint(planMax = PLAN_WORD_LIMITS.Plus): EssayBlueprint {
+export function createInitialBlueprint(planMax = PLAN_WORD_LIMITS.Pro): EssayBlueprint {
   const wordLimit = createInitialWordLimit(planMax)
   const documentType = 'Argumentative/Persuasive Essay'
   return {

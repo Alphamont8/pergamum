@@ -1,8 +1,9 @@
 import { cookies } from 'next/headers'
 import { GUEST_ONLY_MODE } from '@/lib/config/guest-only'
+import { DEFAULT_SUBSCRIPTION_TIER } from '@/lib/config/tier'
 import { GUEST_COOKIE } from '@/lib/guest/constants'
 import { createClient } from '@/lib/supabase/server'
-import { getSessionUser, getUserTier } from '@/lib/auth/session'
+import { getSessionUser } from '@/lib/auth/session'
 import type { SubscriptionTier } from '@/types'
 import type { User } from '@supabase/supabase-js'
 
@@ -13,14 +14,14 @@ export interface ApiAuthContext {
   supabase: Awaited<ReturnType<typeof createClient>>
 }
 
-/** Resolves logged-in user tier, or Basic when unauthenticated guest cookie is set. */
+/** Resolves logged-in user tier, or Pro when unauthenticated guest cookie is set. */
 export async function getApiAuth(): Promise<ApiAuthContext | null> {
   const { supabase, user } = await getSessionUser()
 
   if (GUEST_ONLY_MODE) {
     return {
       user: null,
-      tier: 'Basic',
+      tier: DEFAULT_SUBSCRIPTION_TIER,
       isGuest: true,
       supabase,
     }
@@ -29,7 +30,7 @@ export async function getApiAuth(): Promise<ApiAuthContext | null> {
   if (user) {
     return {
       user,
-      tier: await getUserTier(user.id),
+      tier: DEFAULT_SUBSCRIPTION_TIER,
       isGuest: false,
       supabase,
     }
@@ -39,7 +40,7 @@ export async function getApiAuth(): Promise<ApiAuthContext | null> {
   if (cookieStore.get(GUEST_COOKIE)?.value === '1') {
     return {
       user: null,
-      tier: 'Basic',
+      tier: DEFAULT_SUBSCRIPTION_TIER,
       isGuest: true,
       supabase,
     }

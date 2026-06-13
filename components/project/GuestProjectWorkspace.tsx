@@ -38,7 +38,7 @@ export function GuestProjectWorkspace({ projectId }: GuestProjectWorkspaceProps)
       projectId={projectId}
       projectTitle="Sample Essay"
       initialEssay={essay}
-      subscriptionTier="Basic"
+      subscriptionTier="Pro"
       isGuest
     />
   )

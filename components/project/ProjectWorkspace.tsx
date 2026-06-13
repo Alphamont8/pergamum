@@ -32,7 +32,7 @@ export function ProjectWorkspace({
   const activeNavId = (pathToNavId(pathname) ?? 'blueprint') as AppNavId
 
   const defaultPlan: SubscriptionTier = isGuest
-    ? 'Basic'
+    ? 'Pro'
     : subscriptionTier === 'Max'
       ? 'Pro'
       : SELECTABLE_PLANS.includes(subscriptionTier as (typeof SELECTABLE_PLANS)[number])

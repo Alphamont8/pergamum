@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { DEFAULT_SUBSCRIPTION_TIER } from '@/lib/config/tier'
 import type { SubscriptionTier } from '@/types'
 
 export async function getSessionUser() {
@@ -9,15 +10,6 @@ export async function getSessionUser() {
   return { supabase, user }
 }
 
-export async function getUserTier(userId: string): Promise<SubscriptionTier> {
-  const supabase = await createClient()
-  const { data } = await supabase
-    .from('profiles')
-    .select('subscription_tier')
-    .eq('id', userId)
-    .single()
-
-  const tier = data?.subscription_tier as SubscriptionTier | undefined
-  if (tier && ['Basic', 'Plus', 'Pro', 'Max'].includes(tier)) return tier
-  return 'Basic'
+export async function getUserTier(_userId: string): Promise<SubscriptionTier> {
+  return DEFAULT_SUBSCRIPTION_TIER
 }
