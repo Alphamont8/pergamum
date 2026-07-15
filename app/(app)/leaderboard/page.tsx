@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { getProfile, getSessionUser } from '@/lib/auth/session'
 import { LeaderboardClient } from '@/components/leaderboard/LeaderboardClient'
+import { getAppUrl } from '@/lib/site'
 
 export default async function LeaderboardPage() {
   const { user } = await getSessionUser()
@@ -12,7 +13,7 @@ export default async function LeaderboardPage() {
     <LeaderboardClient
       currentUserId={user.id}
       referralCode={profile.referralCode}
-      appUrl={process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'}
+      appUrl={getAppUrl()}
     />
   )
 }

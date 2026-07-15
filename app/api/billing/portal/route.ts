@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getStripe } from '@/lib/stripe/client'
+import { getAppUrl } from '@/lib/site'
 
 export async function POST() {
   const supabase = await createClient()
@@ -23,7 +24,7 @@ export async function POST() {
     return NextResponse.json({ error: 'No billing account was found.' }, { status: 404 })
   }
 
-  const origin = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
+  const origin = getAppUrl()
   const session = await getStripe().billingPortal.sessions.create({
     customer: profile.stripe_customer_id,
     return_url: `${origin}/upgrade`,

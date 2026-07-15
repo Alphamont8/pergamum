@@ -116,7 +116,7 @@ export default function CookiesPage() {
                 cookies will prevent sign-in and most of the Service from working.
               </li>
               <li>
-                Clear site data for pergamum.app (or your local development origin) to remove sessions and
+                Clear site data for pergamum.io (or your local development origin) to remove sessions and
                 stored preferences.
               </li>
               <li>

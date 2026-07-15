@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { CITES_PACKS, getStripe, priceIdForPack, type CitesPack } from '@/lib/stripe/client'
+import { getAppUrl } from '@/lib/site'
 
 export async function POST(request: Request) {
   const supabase = await createClient()
@@ -46,7 +47,7 @@ export async function POST(request: Request) {
     })
   }
 
-  const origin = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
+  const origin = getAppUrl()
   const session = await stripe.checkout.sessions.create({
     mode: 'payment',
     customer: customerId,

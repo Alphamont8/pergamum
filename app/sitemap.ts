@@ -1,6 +1,7 @@
 import type { MetadataRoute } from 'next'
+import { getAppUrl } from '@/lib/site'
 
-const BASE = (process.env.NEXT_PUBLIC_APP_URL ?? 'https://pergamum.app').replace(/\/$/, '')
+const BASE = getAppUrl()
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const lastModified = new Date('2026-07-13')

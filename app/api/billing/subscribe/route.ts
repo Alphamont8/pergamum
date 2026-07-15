@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { getStripe } from '@/lib/stripe/client'
 import { priceIdForPro } from '@/lib/billing/plans'
+import { getAppUrl } from '@/lib/site'
 
 const bodySchema = z.object({
   interval: z.enum(['month', 'year']),
@@ -71,7 +72,7 @@ export async function POST(request: Request) {
     }
   }
 
-  const origin = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
+  const origin = getAppUrl()
   const session = await stripe.checkout.sessions.create({
     mode: 'subscription',
     customer: customerId,

@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { getProfile, getSessionUser } from '@/lib/auth/session'
 import { getProTrialSnapshot } from '@/lib/billing/proTrial'
 import { CitesPageClient } from '@/components/cites/CitesPageClient'
+import { getAppUrl } from '@/lib/site'
 
 export default async function CitesPage({
   searchParams,
@@ -20,7 +21,7 @@ export default async function CitesPage({
       permanentBalance={profile.permanentCitesBalance}
       proCitesBalance={profile.proCitesBalance}
       referralCode={profile.referralCode}
-      appUrl={process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'}
+      appUrl={getAppUrl()}
       planTier={profile.planTier}
       trial={trial}
       checkoutResult={

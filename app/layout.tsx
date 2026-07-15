@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { Hanken_Grotesk } from 'next/font/google'
 import { ThemeInitScript } from '@/components/theme/ThemeInitScript'
+import { PRODUCTION_APP_URL } from '@/lib/site'
 import { Providers } from './providers'
 import './globals.css'
 
@@ -15,6 +16,7 @@ const siteDescription =
   'Paste your draft, and let Pergamum find the sources, verify the claims, and build your bibliography for you.'
 
 export const metadata: Metadata = {
+  metadataBase: new URL(PRODUCTION_APP_URL),
   title: {
     default: 'Pergamum',
     template: '%s · Pergamum',
@@ -25,6 +27,7 @@ export const metadata: Metadata = {
     description: siteDescription,
     siteName: 'Pergamum',
     type: 'website',
+    url: PRODUCTION_APP_URL,
   },
   twitter: {
     card: 'summary',
