@@ -1,0 +1,43 @@
+---
+description: Punctuation and tone for user-facing errors, warnings, and status messages
+alwaysApply: true
+---
+
+# User-facing copy
+
+Apply to errors, warnings, validation hints, success toasts, and API `error` / `message` fields shown in the UI.
+
+## Punctuation
+
+- **Full sentences** end with a period: `That username is already taken.`
+- **No period** after `!` or `…`: `Friend added!`, `Loading…`, `Sending…`
+- **Exclamations** keep the `!`; do not add a period after it.
+
+## Voice
+
+- Write complete sentences, not fragments: prefer `Checkout didn't go through.` over `Checkout failed`.
+- Be warm and plain; avoid ALL CAPS and technical jargon in user-visible text.
+- **Do not rewrite** third-party errors (Supabase, Stripe) — show `error.message` as-is.
+- Prefer **We couldn't** over **Could not** for failures.
+- Use double-quoted strings when the copy contains an apostrophe (`"That code isn't valid."`).
+
+## Examples
+
+```
+// Good
+'You need to sign in to do that.'
+'We couldn't find that code.'
+'Password must be at least 6 characters.'
+'Friend added!'
+
+// Bad
+'Invalid code'
+'Unauthorized'
+'Analyze failed'
+'Username already taken'
+```
+
+## Scope
+
+- Update: form validation, banners, dialogs, client fallbacks, API errors returned to the client.
+- Skip: dev-only throws, webhook payloads, internal logs, React context guard errors.

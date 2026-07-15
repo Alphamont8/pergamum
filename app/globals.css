@@ -1,249 +1,77 @@
 @import '../styles/tokens.css';
-@import '../styles/themes.css';
-@import '../components/ui/AppIcon.css';
-@import '../styles/glass.css';
-@import '../styles/background.css';
 
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
+.pg-container {
+  width: min(100%, var(--chat-max));
+  margin-inline: auto;
+  padding-inline: 20px;
 }
 
-html,
-body {
-  height: 100%;
+.pg-hairline {
+  border: 0;
+  border-top: 1px solid var(--border-hairline);
   margin: 0;
 }
 
-body {
-  font-family: var(--font-sans);
-  color: var(--workspace-text);
-  background: var(--app-bg);
-  -webkit-font-smoothing: antialiased;
-  overflow: hidden;
+.pg-muted {
+  color: var(--fg-muted);
+  font-size: 13px;
+  line-height: 1.5;
 }
 
-button {
-  font-family: inherit;
-  cursor: pointer;
-}
-
-input,
-textarea {
-  font-family: inherit;
-}
-
-/* Legacy centered auth (signup still uses auth-page until updated) */
-.auth-page {
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 2rem;
-  background: var(--app-bg);
-}
-
-.auth-card {
-  width: 100%;
-  max-width: 400px;
-  padding: 2rem;
-  border-radius: var(--radius-lg, 12px);
-  background: var(--glass-bg, rgba(255, 255, 255, 0.08));
-  border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.12));
-}
-
-.auth-card h1 {
-  margin: 0 0 0.5rem;
-  font-size: 1.5rem;
-}
-
-.auth-card form {
+.pg-title-copy {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
-  margin-top: 1.5rem;
+  gap: var(--title-desc-gap);
+  min-width: 0;
 }
 
-.auth-card label {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  font-size: 0.875rem;
+.pg-title-copy > :is(h1, h2, h3, h4, strong) {
+  margin: 0;
 }
 
-.auth-card input {
-  padding: 0.6rem 0.75rem;
-  border-radius: 8px;
-  border: 1px solid var(--glass-border);
-  background: var(--workspace-panel-bg);
-  color: inherit;
+.pg-title-copy > p {
+  margin: 0;
 }
 
-.auth-card button[type="submit"] {
-  padding: 0.65rem 1rem;
-  border-radius: 8px;
-  border: none;
-  background: var(--accent, #4f6ef7);
-  color: #fff;
-  font-weight: 600;
+.pg-subtle {
+  color: var(--fg-subtle);
 }
 
-.auth-card__footer {
-  margin-top: 1rem;
-  font-size: 0.875rem;
+.pg-loading {
+  margin: 0;
+  padding: 24px 20px;
   text-align: center;
+  color: var(--fg-subtle);
+  font-size: 13px;
 }
 
-.auth-card__footer a {
-  color: var(--accent, #4f6ef7);
+.app-page-blank {
+  min-height: 48vh;
 }
 
-.projects-page,
-.settings-page {
-  padding: 2rem;
-  max-width: 960px;
+.pg-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  color: var(--fg-subtle);
+  font-size: 13px;
+  padding: 4px 0;
+  transition: color 160ms ease;
+  text-decoration: none;
 }
 
-.projects-page__grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 1rem;
-  margin-top: 1.5rem;
+.page-back {
+  padding-left: 18px;
+  margin-bottom: 2px;
 }
 
-.project-card {
-  padding: 1.25rem;
-  border-radius: 12px;
-  border: 1px solid var(--glass-border);
-  background: var(--workspace-panel-bg);
-  text-align: left;
-  transition: border-color 0.15s;
+.pg-back__arrow {
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
 }
 
-.project-card:hover {
-  border-color: var(--accent, #4f6ef7);
+.pg-back:hover {
+  color: var(--accent);
 }
-
-.project-card h3 {
-  margin: 0 0 0.5rem;
-  font-size: 1rem;
-}
-
-.project-card time {
-  font-size: 0.75rem;
-  opacity: 0.7;
-}
-
-.settings-page__section {
-  margin-bottom: 2rem;
-}
-
-.settings-page__section h2 {
-  font-size: 1rem;
-  margin: 0 0 1rem;
-}
-
-.settings-page__field {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  margin-bottom: 1rem;
-  max-width: 320px;
-}
-
-.settings-page__field select,
-.settings-page__field input {
-  padding: 0.5rem 0.75rem;
-  border-radius: 8px;
-  border: 1px solid var(--glass-border);
-  background: var(--workspace-panel-bg);
-  color: inherit;
-}
-
-.billing-page {
-  padding: 2rem;
-  max-width: 720px;
-}
-
-.billing-plans {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: 1rem;
-  margin: 1.5rem 0;
-}
-
-.billing-plan {
-  padding: 1.25rem;
-  border-radius: 12px;
-  border: 1px solid var(--glass-border);
-  background: var(--workspace-panel-bg);
-}
-
-.billing-plan--current {
-  border-color: var(--accent, #4f6ef7);
-}
-
-.billing-plan button {
-  margin-top: 1rem;
-  width: 100%;
-  padding: 0.5rem;
-  border-radius: 8px;
-  border: none;
-  background: var(--accent, #4f6ef7);
-  color: #fff;
-}
-
-/* ── Global scrollbar removal ── */
-* {
-  scrollbar-width: none;
-}
-*::-webkit-scrollbar {
-  display: none;
-}
-
-/* ── Scroll-boundary bounce animation ── */
-/*
- * Per-keyframe timing strategy:
- *   0% → 28%  ease-in  — content accelerates into the blocked direction
- *   28% → 100% spring  — content snaps back with a single clean overshoot
- *
- * The spring easing (cubic-bezier with y2 > 1) is intentionally applied only
- * to the pull-back phase, NOT to the final keyframe. This eliminates the tiny
- * tail-end shake that appears when a spring easing is applied globally and
- * continues to oscillate after the last keyframe.
- */
-@keyframes scroll-bounce-top {
-  0% {
-    transform: translateY(0);
-    animation-timing-function: cubic-bezier(0.55, 0, 1, 0.45);
-  }
-  28% {
-    transform: translateY(9px);
-    animation-timing-function: cubic-bezier(0.34, 1.4, 0.64, 1);
-  }
-  100% { transform: translateY(0); }
-}
-
-@keyframes scroll-bounce-bottom {
-  0% {
-    transform: translateY(0);
-    animation-timing-function: cubic-bezier(0.55, 0, 1, 0.45);
-  }
-  28% {
-    transform: translateY(-9px);
-    animation-timing-function: cubic-bezier(0.34, 1.4, 0.64, 1);
-  }
-  100% { transform: translateY(0); }
-}
-
-.scroll-bounce-top,
-.scroll-bounce-bottom {
-  will-change: transform;
-  animation-duration: 0.42s;
-  animation-fill-mode: forwards;
-}
-
-.scroll-bounce-top    { animation-name: scroll-bounce-top; }
-.scroll-bounce-bottom { animation-name: scroll-bounce-bottom; }
-

@@ -1,34 +1,37 @@
 import { NextResponse } from 'next/server'
-import { z } from 'zod'
-import { getSessionUser } from '@/lib/auth/session'
-import { getStripe, PLAN_PRICE_IDS } from '@/lib/stripe/client'
-
-const bodySchema = z.object({
-  plan: z.enum(['Plus', 'Pro', 'Max']),
-})
+import { createClient, createServiceClient } from '@/lib/supabase/server'
+import { CITES_PACKS, getStripe, priceIdForPack, type CitesPack } from '@/lib/stripe/client'
 
 export async function POST(request: Request) {
-  const { supabase, user } = await getSessionUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'You need to sign in to do that.' }, { status: 401 })
 
-  const parsed = bodySchema.safeParse(await request.json())
-  if (!parsed.success) {
-    return NextResponse.json({ error: 'Invalid plan' }, { status: 400 })
+  const body = (await request.json()) as { pack?: CitesPack }
+  const pack = body.pack
+  if (!pack || !(pack in CITES_PACKS)) {
+    return NextResponse.json({ error: "That Cites pack isn't valid." }, { status: 400 })
   }
 
-  const priceId = PLAN_PRICE_IDS[parsed.data.plan]
-  if (!priceId) {
-    return NextResponse.json({ error: 'Price not configured' }, { status: 500 })
+  const priceId = priceIdForPack(pack)
+  if (!priceId || !process.env.STRIPE_SECRET_KEY) {
+    return NextResponse.json(
+      { error: "Checkout isn't available for this pack yet." },
+      { status: 503 },
+    )
   }
 
+  const meta = CITES_PACKS[pack]
   const { data: profile } = await supabase
     .from('profiles')
-    .select('stripe_customer_id')
+    .select('stripe_customer_id, username')
     .eq('id', user.id)
     .single()
 
   const stripe = getStripe()
-  let customerId = profile?.stripe_customer_id
+  let customerId = profile?.stripe_customer_id ?? undefined
 
   if (!customerId) {
     const customer = await stripe.customers.create({
@@ -36,21 +39,35 @@ export async function POST(request: Request) {
       metadata: { supabase_user_id: user.id },
     })
     customerId = customer.id
-    await supabase
-      .from('profiles')
-      .update({ stripe_customer_id: customerId })
-      .eq('id', user.id)
+    const service = await createServiceClient()
+    await service.rpc('set_stripe_customer', {
+      p_user_id: user.id,
+      p_customer_id: customerId,
+    })
   }
 
-  const origin = request.headers.get('origin') ?? process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
-
+  const origin = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
   const session = await stripe.checkout.sessions.create({
+    mode: 'payment',
     customer: customerId,
-    mode: 'subscription',
     line_items: [{ price: priceId, quantity: 1 }],
-    success_url: `${origin}/billing?success=1`,
-    cancel_url: `${origin}/billing?canceled=1`,
-    metadata: { supabase_user_id: user.id, plan: parsed.data.plan },
+    success_url: `${origin}/cites?success=1`,
+    cancel_url: `${origin}/cites?cancelled=1`,
+    metadata: {
+      supabase_user_id: user.id,
+      pack,
+      cites: String(meta.cites),
+    },
+  })
+
+  const service = await createServiceClient()
+  await service.from('purchases').insert({
+    user_id: user.id,
+    stripe_session_id: session.id,
+    pack,
+    cites: meta.cites,
+    amount_cents: meta.amountCents,
+    status: 'pending',
   })
 
   return NextResponse.json({ url: session.url })

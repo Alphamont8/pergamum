@@ -1,63 +1,28 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
-import { GUEST_ONLY_MODE } from '@/lib/config/guest-only'
-import { GUEST_COOKIE, GUEST_DEFAULT_PROJECT_ID } from '@/lib/guest/constants'
 
-const GUEST_WORKSPACE = `/guest/project/${GUEST_DEFAULT_PROJECT_ID}/blueprint`
+/** Always public (no auth required). */
+const PUBLIC_PATHS = [
+  '/login',
+  '/auth/callback',
+  '/api/webhooks/stripe',
+  '/privacy',
+  '/terms',
+  '/cookies',
+]
 
-function applyGuestCookie(response: NextResponse) {
-  response.cookies.set(GUEST_COOKIE, '1', {
-    path: '/',
-    maxAge: 60 * 60 * 24 * 30,
-    sameSite: 'lax',
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-  })
-  return response
-}
-
-function handleGuestOnlyMode(request: NextRequest) {
-  const path = request.nextUrl.pathname
-
-  if (path === '/signup') {
-    const url = request.nextUrl.clone()
-    url.pathname = '/login'
-    return applyGuestCookie(NextResponse.redirect(url))
-  }
-
-  if (path === '/') {
-    const url = request.nextUrl.clone()
-    url.pathname = GUEST_WORKSPACE
-    return applyGuestCookie(NextResponse.redirect(url))
-  }
-
-  if (
-    path.startsWith('/projects') ||
-    path.startsWith('/project/') ||
-    path.startsWith('/settings') ||
-    path.startsWith('/billing')
-  ) {
-    const url = request.nextUrl.clone()
-    url.pathname = GUEST_WORKSPACE
-    return applyGuestCookie(NextResponse.redirect(url))
-  }
-
-  return applyGuestCookie(NextResponse.next({ request }))
+function isPublic(path: string) {
+  return PUBLIC_PATHS.some((p) => path === p || path.startsWith(`${p}/`))
 }
 
 export async function updateSession(request: NextRequest) {
   const path = request.nextUrl.pathname
 
-  if (GUEST_ONLY_MODE) {
-    return handleGuestOnlyMode(request)
-  }
-
-  const isGuest = request.cookies.get(GUEST_COOKIE)?.value === '1'
-
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
   if (!supabaseUrl || !supabaseAnonKey) {
-    if (path.startsWith('/login') || path.startsWith('/signup')) {
+    if (isPublic(path) || path.startsWith('/login')) {
       return NextResponse.next({ request })
     }
     const url = request.nextUrl.clone()
@@ -92,62 +57,85 @@ export async function updateSession(request: NextRequest) {
     } = await supabase.auth.getUser()
     user = authUser
   } catch {
-    /* continue without session — public/guest routes still work */
+    /* continue without session */
   }
 
-  const isAuthRoute =
-    path.startsWith('/login') ||
-    path.startsWith('/signup') ||
-    path.startsWith('/auth/callback')
-  const isPublicApi =
-    path.startsWith('/api/webhooks') || path.startsWith('/api/guest/start')
-  const isGuestRoute = path.startsWith('/guest')
-  const isGuestAiApi = isGuest && path.startsWith('/api/ai')
-  const isGuestSourcesApi = isGuest && path.startsWith('/api/sources')
+  // Logged-in users leaving login → home (or redirect param)
+  if (user && (path === '/login' || path === '/signup')) {
+    const url = request.nextUrl.clone()
+    const next = url.searchParams.get('redirect') || '/'
+    url.pathname = next.startsWith('/') ? next : '/'
+    url.search = ''
+    return NextResponse.redirect(url)
+  }
 
-  if (isGuestRoute && !isGuest) {
+  // Everything except public auth routes requires sign-in
+  if (!user && !isPublic(path)) {
+    if (path.startsWith('/api/')) {
+      return NextResponse.json({ error: 'You need to sign in to do that.' }, { status: 401 })
+    }
     const url = request.nextUrl.clone()
     url.pathname = '/login'
+    if (path !== '/') url.searchParams.set('redirect', path)
     return NextResponse.redirect(url)
   }
 
-  const isProtected =
-    path.startsWith('/projects') ||
-    path.startsWith('/settings') ||
-    path.startsWith('/billing') ||
-    path.startsWith('/project/') ||
-    path.startsWith('/api/projects') ||
-    path.startsWith('/api/ai') ||
-    path.startsWith('/api/sources') ||
-    path.startsWith('/api/billing')
+  // Onboarding gate for authenticated users (skip public legal/auth routes)
+  if (
+    user &&
+    !isPublic(path) &&
+    !path.startsWith('/onboarding') &&
+    !path.startsWith('/api/') &&
+    !path.startsWith('/auth/')
+  ) {
+    try {
+      const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
+        cookies: {
+          getAll() {
+            return request.cookies.getAll()
+          },
+          setAll() {},
+        },
+      })
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('onboarding_complete')
+        .eq('id', user.id)
+        .maybeSingle()
 
-  if (!user && isProtected && !isPublicApi && !isGuestRoute && !isGuestAiApi && !isGuestSourcesApi) {
-    const url = request.nextUrl.clone()
-    url.pathname = '/login'
-    url.searchParams.set('redirect', path)
-    return NextResponse.redirect(url)
+      if (profile && profile.onboarding_complete === false) {
+        const url = request.nextUrl.clone()
+        url.pathname = '/onboarding'
+        return NextResponse.redirect(url)
+      }
+    } catch {
+      /* allow through if profile lookup fails */
+    }
   }
 
-  if (user && isGuestRoute) {
-    const url = request.nextUrl.clone()
-    url.pathname = '/projects'
-    return NextResponse.redirect(url)
-  }
-
-  if (user && isAuthRoute && !path.startsWith('/auth/callback')) {
-    const url = request.nextUrl.clone()
-    url.pathname = '/projects'
-    const clearGuest = NextResponse.redirect(url)
-    clearGuest.cookies.set(GUEST_COOKIE, '', { path: '/', maxAge: 0 })
-    return clearGuest
-  }
-
-  if (path === '/') {
-    const url = request.nextUrl.clone()
-    if (user) url.pathname = '/projects'
-    else if (isGuest) url.pathname = GUEST_WORKSPACE
-    else url.pathname = '/login'
-    return NextResponse.redirect(url)
+  if (user && path.startsWith('/onboarding')) {
+    try {
+      const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
+        cookies: {
+          getAll() {
+            return request.cookies.getAll()
+          },
+          setAll() {},
+        },
+      })
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('onboarding_complete')
+        .eq('id', user.id)
+        .maybeSingle()
+      if (profile?.onboarding_complete) {
+        const url = request.nextUrl.clone()
+        url.pathname = '/'
+        return NextResponse.redirect(url)
+      }
+    } catch {
+      /* continue */
+    }
   }
 
   return supabaseResponse

@@ -1,8 +1,20 @@
 import { createOpenAI } from '@ai-sdk/openai'
-import { generateObject, generateText, streamText, type LanguageModel } from 'ai'
+import { generateObject, generateText, embedMany, type LanguageModel } from 'ai'
 import type { z } from 'zod'
 
 export const MODEL_ID = 'deepseek/deepseek-v4-flash'
+export const EMBEDDING_MODEL_ID = 'openai/text-embedding-3-small'
+
+/**
+ * DeepSeek uses implicit prompt caching on matching prefixes.
+ * `caching: 'auto'` is a no-op for DeepSeek but enables explicit cache markers
+ * if the gateway ever routes to Anthropic/MiniMax fallbacks.
+ */
+const GATEWAY_PROVIDER_OPTIONS = {
+  gateway: {
+    caching: 'auto' as const,
+  },
+}
 
 function resolveGatewayApiKey(): string | undefined {
   const key = process.env.AI_GATEWAY_API_KEY || process.env.VERCEL_OIDC_TOKEN
@@ -67,6 +79,7 @@ export async function complete(
     messages: toSdkMessages(messages),
     temperature: options.temperature ?? 0.35,
     maxTokens: options.maxTokens ?? 4096,
+    providerOptions: GATEWAY_PROVIDER_OPTIONS,
   })
   return text
 }
@@ -85,6 +98,7 @@ export async function completeStructured<T extends z.ZodType>(
       messages: toSdkMessages(messages),
       temperature: options.temperature ?? 0.3,
       maxTokens: options.maxTokens ?? 4096,
+      providerOptions: GATEWAY_PROVIDER_OPTIONS,
     })
     return object
   } catch {
@@ -96,26 +110,26 @@ export async function completeStructured<T extends z.ZodType>(
   }
 }
 
-export function streamDraft(messages: LLMMessage[], options: CompletionOptions = {}) {
-  const model = getModel()
-  return streamText({
-    model,
-    system: options.system,
-    messages: toSdkMessages(messages),
-    temperature: options.temperature ?? 0.35,
-    maxTokens: options.maxTokens ?? 4096,
+export async function embed(texts: string[]): Promise<number[][]> {
+  if (texts.length === 0) return []
+  const client = getGatewayClient()
+  const { embeddings } = await embedMany({
+    model: client.embedding(EMBEDDING_MODEL_ID),
+    values: texts,
   })
+  return embeddings
 }
 
-/** @deprecated Use complete() — kept for gradual migration */
-export async function completeDraft(
-  messages: LLMMessage[],
-  options: CompletionOptions = {},
-): Promise<string> {
-  return complete(messages, options)
-}
-
-/** @deprecated Use getModel() */
-export function getDraftModel(): LanguageModel {
-  return getModel()
+export function cosineSimilarity(a: number[], b: number[]): number {
+  if (a.length === 0 || b.length === 0 || a.length !== b.length) return 0
+  let dot = 0
+  let normA = 0
+  let normB = 0
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i] * b[i]
+    normA += a[i] * a[i]
+    normB += b[i] * b[i]
+  }
+  const denom = Math.sqrt(normA) * Math.sqrt(normB)
+  return denom === 0 ? 0 : dot / denom
 }

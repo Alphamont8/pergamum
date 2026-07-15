@@ -1,0 +1,21 @@
+---
+description: Ban em dashes and en dashes in user-facing copy
+globs:
+  - app/**/*
+  - components/**/*
+  - lib/billing/**/*
+  - lib/cites/**/*
+  - utils/**/*
+---
+
+# No em dashes or en dashes in user-facing copy
+
+Never use `—` (em dash) or `–` (en dash) in strings shown in the UI, API errors returned to clients, or LLM prompts that shape user-visible titles.
+
+Use instead:
+- Two sentences with a period
+- A comma
+- Hyphen `-` for numeric ranges (e.g. `3-8`, `4-6`)
+- The word `to` for ranges when clearer (e.g. `3 to 24`)
+
+Internal code comments and regex that strip dashes from third-party titles are exempt.

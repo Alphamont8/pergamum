@@ -1,4 +1,4 @@
-export type ThemePreference = 'system' | 'light' | 'dark'
+import type { ThemePreference } from '@/types'
 
 export type ResolvedTheme = 'light' | 'dark'
 
@@ -8,7 +8,6 @@ export function readThemePreference(): ThemePreference {
   if (typeof window === 'undefined') return 'system'
   const stored = localStorage.getItem(STORAGE_KEY)
   if (stored === 'system' || stored === 'light' || stored === 'dark') return stored
-  if (stored === 'dark' || stored === 'light') return stored
   return 'system'
 }
 
@@ -27,10 +26,14 @@ export function resolveTheme(pref: ThemePreference): ResolvedTheme {
   return pref === 'dark' ? 'dark' : 'light'
 }
 
-export function cycleThemePreference(pref: ThemePreference): ThemePreference {
-  if (pref === 'system') return 'light'
-  if (pref === 'light') return 'dark'
-  return 'system'
+export function applyTheme(pref: ThemePreference): ResolvedTheme {
+  const resolved = resolveTheme(pref)
+  if (typeof document !== 'undefined') {
+    document.documentElement.dataset.theme = resolved
+    document.documentElement.style.colorScheme = resolved
+  }
+  writeThemePreference(pref)
+  return resolved
 }
 
 export function themePreferenceLabel(pref: ThemePreference): string {

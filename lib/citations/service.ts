@@ -7,6 +7,7 @@ import type { ReferencingStyleId, SourceRecord } from '@/types'
 import { isBluebookStyle, isNumericReferencingStyle } from '@/utils/referencingStyle'
 import { sourcesToCslItems, type CslItem } from './csl'
 import { formatBibliographyFallback, formatInTextFallback } from './fallback'
+import { normalizeSourceForCitation } from './normalize'
 import { ensureCitationTemplates, resolveCitationTemplate } from './templates'
 
 const DEFAULT_LANG = 'en-US'
@@ -37,12 +38,14 @@ export async function formatBibliographyEntry(
   styleId: ReferencingStyleId,
   allSources: SourceRecord[],
 ): Promise<string> {
-  if (isBluebookStyle(styleId)) return formatBibliographyFallback(source, styleId)
+  const clean = normalizeSourceForCitation(source)
+  const cleanAll = allSources.map(normalizeSourceForCitation)
+  if (isBluebookStyle(styleId)) return formatBibliographyFallback(clean, styleId)
 
   try {
-    const result = await withCite(allSources, styleId, (cite, template) =>
+    const result = await withCite(cleanAll, styleId, (cite, template) =>
       cite.format('bibliography', {
-        entry: source.id,
+        entry: clean.id,
         template,
         lang: DEFAULT_LANG,
         format: 'text',
@@ -58,7 +61,7 @@ export async function formatBibliographyEntry(
   } catch {
     /* fall through */
   }
-  return formatBibliographyFallback(source, styleId)
+  return formatBibliographyFallback(clean, styleId)
 }
 
 export async function formatInTextCitation(
@@ -70,20 +73,22 @@ export async function formatInTextCitation(
     locator?: string
   },
 ): Promise<string> {
+  const clean = normalizeSourceForCitation(source)
+  const cleanAll = allSources.map(normalizeSourceForCitation)
   if (isBluebookStyle(styleId)) {
     const num = options?.priorSourceIds
       ? new Set(options.priorSourceIds).size +
-        (options.priorSourceIds.includes(source.id) ? 0 : 1)
+        (options.priorSourceIds.includes(clean.id) ? 0 : 1)
       : undefined
-    return formatInTextFallback(source, styleId, num)
+    return formatInTextFallback(clean, styleId, num)
   }
 
   try {
     const entry = options?.locator
-      ? { id: source.id, label: 'page', locator: options.locator }
-      : source.id
+      ? { id: clean.id, label: 'page', locator: options.locator }
+      : clean.id
 
-    const result = await withCite(allSources, styleId, (cite, template) => {
+    const result = await withCite(cleanAll, styleId, (cite, template) => {
       const formatOpts: Record<string, unknown> = {
         entry,
         template,
@@ -105,11 +110,11 @@ export async function formatInTextCitation(
 
   const num = isNumericReferencingStyle(styleId)
     ? options?.priorSourceIds
-      ? [...new Set(options.priorSourceIds)].indexOf(source.id) + 1 ||
-        new Set([...options.priorSourceIds, source.id]).size
+      ? [...new Set(options.priorSourceIds)].indexOf(clean.id) + 1 ||
+        new Set([...options.priorSourceIds, clean.id]).size
       : 1
     : undefined
-  return formatInTextFallback(source, styleId, num)
+  return formatInTextFallback(clean, styleId, num)
 }
 
 export async function formatBibliographyBatch(

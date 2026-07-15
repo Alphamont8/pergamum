@@ -1,23 +1,18 @@
-export type TabKind = 'blueprint' | 'outline' | 'draft' | 'references' | 'export'
-
-export type ThemeMode = 'light' | 'dark'
-
 export type ThemePreference = 'system' | 'light' | 'dark'
 
-export type SubscriptionTier = 'Basic' | 'Plus' | 'Pro' | 'Max'
+export type PlanTier = 'basic' | 'plus' | 'pro'
 
-/** Shown under the Pergamum logo in the sidebar (subscription tier). */
-export type PlanLabel = SubscriptionTier
+export type BillingInterval = 'month' | 'year'
 
-export type BlueprintSection = 'instructions' | 'framework'
-
-export type DraftSubView = 'editing' | 'auditing' | 'polishing'
-
-export type TabDisplayMode = 'fullscreen' | 'half'
-
-export type ViewLayout = 'single' | 'split'
-
-export type DraftMode = 'write' | 'audit' | 'polish'
+export type SubscriptionStatus =
+  | 'incomplete'
+  | 'incomplete_expired'
+  | 'trialing'
+  | 'active'
+  | 'past_due'
+  | 'canceled'
+  | 'unpaid'
+  | 'paused'
 
 export type CitationStyle = 'APA' | 'MLA' | 'Chicago' | 'Harvard'
 
@@ -41,9 +36,14 @@ export type SourceKind =
   | 'report'
   | 'webpage'
   | 'thesis'
+  | 'legal-case'
   | 'other'
 
+export type SourceType = 'primary' | 'secondary'
+
 export type EnrichmentStatus = 'pending' | 'enriching' | 'enriched' | 'failed'
+
+export type ReliabilityBand = 'strong' | 'good' | 'fair' | 'caution'
 
 export interface SourceVenue {
   name?: string
@@ -60,6 +60,8 @@ export interface SourceBiblio {
 
 export interface SourceAuthorship {
   name: string
+  /** When true, treat as an organization/team literal (not a personal name). */
+  literal?: boolean
   orcid?: string
   hIndex?: number
   institutions?: string[]
@@ -85,8 +87,6 @@ export interface SourceEnrichment {
   error?: string
 }
 
-export type ReliabilityBand = 'strong' | 'good' | 'fair' | 'caution'
-
 export interface ReliabilitySubscore {
   score: number
   rationale: string
@@ -105,136 +105,6 @@ export interface SourceReliability {
   flags?: string[]
 }
 
-export type InstructionAttachmentKind = 'brief' | 'rubric' | 'material'
-
-export type InstructionAttachmentStatus = 'parsing' | 'parsed' | 'error'
-
-export interface InstructionAttachment {
-  id: string
-  fileName: string
-  kind: InstructionAttachmentKind
-  extractedText: string
-  status: InstructionAttachmentStatus
-  errorMessage?: string
-}
-
-export interface QuickSettings {
-  documentType: string
-  documentTypeIsAuto: boolean
-  /** Custom label when documentType is "Other" (Pro+). */
-  documentTypeCustom?: string
-  writingStyle: string
-  writingStyleIsAuto: boolean
-  readingLevel: string
-  readingLevelIsAuto: boolean
-  referencingStyle: ReferencingStyleId | 'Auto' | 'none'
-  referencingStyleIsAuto: boolean
-}
-
-export interface WordLimitSettings {
-  min: number
-  max: number
-  minAuto: boolean
-  maxAuto: boolean
-}
-
-export type SourceType = 'primary' | 'secondary'
-
-export type OutlineNodeType = 'section' | 'point' | 'subpoint'
-
-export interface WorkspaceTab {
-  id: string
-  kind: TabKind
-  label: string
-  closed: boolean
-  displayMode: TabDisplayMode
-  order: number
-}
-
-export interface WorkspaceView {
-  layout: ViewLayout
-  focusedTabId: string | null
-  pairedTabId: string | null
-  splitRatio: number
-}
-
-export interface RubricAlignmentItem {
-  criterion: string
-  addressedBy: string
-  covered: boolean
-}
-
-export interface BlueprintAnalysis {
-  taskWords: string[]
-  goals: string[]
-  boundaries: string[]
-  impliedQuestions: string[]
-  suggestedStructure: string[]
-  formattingRequirements: string[]
-  rubricAlignment: RubricAlignmentItem[]
-}
-
-export interface WordBudgetSection {
-  id: string
-  label: string
-  /** Section share of total word count (0–100). */
-  weightPercent: number
-  targetWords: number
-}
-
-export interface WordBudget {
-  total: number
-  sections: WordBudgetSection[]
-}
-
-export interface EssayBlueprint {
-  instructionsText: string
-  attachments: InstructionAttachment[]
-  quickSettings: QuickSettings
-  wordLimit: WordLimitSettings
-  frameworkGenerated: boolean
-  instructionsRaw: string
-  analysis: BlueprintAnalysis | null
-  title: string
-  thesis: string
-  researchQuestion: string
-  wordBudget: WordBudget
-  documentType: string
-  writingStyle: string
-  tone: string
-  readingLevel: string
-  citationStyle: CitationStyle
-  referencingStyleId: ReferencingStyleId
-  approvedAt: number | null
-  /** Fingerprint of instructions input when framework was last generated. */
-  frameworkInputFingerprint?: string | null
-  /** JSON snapshot of word-budget section ids/labels when outline was last synced. */
-  outlineBudgetFingerprint?: string | null
-}
-
-export interface OutlineSourceRef {
-  sourceId: string
-  /** @deprecated Prefer `quotes`; kept for backward compatibility */
-  quote?: string
-  quotes?: string[]
-}
-
-export interface OutlineNode {
-  id: string
-  parentId: string | null
-  type: OutlineNodeType
-  title: string
-  /** @deprecated Use child point/subpoint nodes instead */
-  bullets?: string[]
-  sourceRefs: OutlineSourceRef[]
-  collapsed: boolean
-  order: number
-}
-
-export interface OutlineTreeNode extends OutlineNode {
-  children: OutlineTreeNode[]
-}
-
 export interface SourceSearchResult {
   title: string
   url: string
@@ -246,97 +116,12 @@ export interface SourceSearchResult {
   quotes?: string[]
 }
 
-export interface OutlineState {
-  nodes: OutlineNode[]
-  readyForDraftAt: number | null
-}
-
-export type DraftToolKind =
-  | 'evidence'
-  | 'goalAlignment'
-  | 'spelling'
-  | 'writingQuality'
-  | 'shiftTone'
-  | 'elevatePhrasing'
-  | 'findSynonyms'
-  | 'definePhrase'
-
-export type DraftSuggestionStatus = 'open' | 'accepted' | 'dismissed'
-
-export type DraftSuggestionSeverity = 'info' | 'warning' | 'error' | 'improvement'
-
-export type DraftToolScope = 'section' | 'essay'
-
-export interface DraftTextRange {
-  sectionId: string
-  from: number
-  to: number
-}
-
-export interface DraftSourceSuggestion {
-  title: string
-  url?: string
-  authors?: string
-  year?: string
-  summary?: string
-  quote?: string
-}
-
-export interface DraftSuggestion {
-  id: string
-  tool: DraftToolKind
-  sectionId: string
-  status: DraftSuggestionStatus
-  severity: DraftSuggestionSeverity
-  message: string
-  targetText?: string
-  suggestion?: string
-  range?: DraftTextRange
-  sourceSuggestion?: DraftSourceSuggestion
-  /** Synonyms or close alternatives (Find Synonyms tool) */
-  alternatives?: string[]
-  /** Antonyms (Find Synonyms tool) */
-  antonyms?: string[]
-  /** Target writing style used (Shift Tone tool) */
-  targetWritingStyle?: string
-}
-
-export interface DraftToolState {
-  status: 'idle' | 'running' | 'done' | 'error'
-  lastRunAt: number | null
-  results: DraftSuggestion[]
-}
-
-export interface DraftSection {
-  id: string
-  label: string
-  /** Plaintext mirror for word counts, AI prompts, and export */
-  content: string
-  /** Rich HTML content for the TipTap editor */
-  html: string
-  wordCount: number
-  highlights: string[]
-  status: 'empty' | 'generating' | 'draft' | 'approved'
-}
-
-export interface DraftDocument {
-  sections: DraftSection[]
-  activeSectionId: string | null
-  /** Set when draft is first generated; never cleared even if user deletes all text */
-  generatedAt?: number | null
-  tools?: Partial<Record<DraftToolKind, DraftToolState>>
-  showInlineHighlights?: boolean
-}
-
-export type SourceAddedVia = 'upload' | 'link' | 'search' | 'ai'
-
 export interface SourceRecord {
   id: string
   title: string
   url?: string
   fileName?: string
   type: SourceType
-  addedVia?: SourceAddedVia
   summary?: string
   authors?: string
   year?: string
@@ -379,43 +164,90 @@ export interface BibliographyEntry {
   citationNumber?: number
 }
 
-export interface TextSelectionRange {
-  sectionId: string
-  start: number
-  end: number
-  text: string
+export type CiteLedgerKind =
+  | 'purchase'
+  | 'subscription'
+  | 'referral'
+  | 'ad'
+  | 'spend'
+  | 'grant'
+
+export type GenerationStatus =
+  | 'analyzing'
+  | 'quoted'
+  | 'generating'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+
+export type SourceRecency = 'any' | '10y' | '5y'
+
+export type SourceTier = 'any' | 'academic'
+
+export interface GenerationSettings {
+  styleId: ReferencingStyleId
+  inText: boolean
+  suggestCorrections: boolean
+  recency: SourceRecency
+  sourceTier: SourceTier
+  /** Set server-side during analysis; routes medical essays through the medical database. */
+  medical?: boolean
+  /** Set server-side during analysis; routes legal essays through the US legal database (Pro). */
+  legal?: boolean
 }
 
-export interface WorkspaceContext {
-  activeTabKind: TabKind
-  activeNavId: string
-  blueprintSection: BlueprintSection
-  draftSubView: DraftSubView
-  activeSectionId: string | null
-  selectedOutlineNodeId: string | null
-  selectedSourceId: string | null
-  selectedTextRange: TextSelectionRange | null
-  draftMode: DraftMode
-  /** Active function in the multipurpose selection-tools card */
-  activeSelectionTool: DraftToolKind | null
+export interface Profile {
+  id: string
+  username: string | null
+  displayName: string | null
+  avatarUrl: string | null
+  schoolId: string | null
+  defaultStyle: ReferencingStyleId
+  defaultInText: boolean
+  defaultSuggestCorrections: boolean
+  defaultRecency: SourceRecency
+  defaultSourceTier: SourceTier
+  themePreference: ThemePreference
+  referralCode: string
+  /** Total spendable Cites (permanent + remaining Pro monthly allotment). */
+  citesBalance: number
+  /** Pack / referral / signup pool — never expires. */
+  permanentCitesBalance: number
+  /** Remaining Pro monthly allotment — resets each grant; clears when Pro ends. */
+  proCitesBalance: number
+  bibliographiesCount: number
+  onboardingComplete: boolean
+  stripeCustomerId: string | null
+  planTier: PlanTier
+  proTrialStartedAt: string | null
+  proTrialEndsAt: string | null
+  createdAt: string
+  updatedAt: string
 }
 
-export interface EssayWorkflowState {
-  blueprintApproved: boolean
-  outlineReadyForDraft: boolean
-  draftHasContent: boolean
-  /** True once draft has been generated at least once, even if user clears all text */
-  draftEverGenerated: boolean
-  hasCitations: boolean
-  instructionsComplete?: boolean
-  blueprintGenerated?: boolean
+export interface Subscription {
+  id: string
+  userId: string
+  stripeSubscriptionId: string
+  stripeCustomerId: string
+  planTier: Exclude<PlanTier, 'basic'>
+  billingInterval: BillingInterval
+  status: SubscriptionStatus
+  currentPeriodStart: string | null
+  currentPeriodEnd: string | null
+  cancelAtPeriodEnd: boolean
+  nextCitesGrantAt: string | null
+  createdAt: string
+  updatedAt: string
 }
 
-export interface EssayState {
-  blueprint: EssayBlueprint
-  outline: OutlineState
-  draft: DraftDocument
-  sources: SourceRecord[]
-  citations: CitationInstance[]
-  workspaceContext: WorkspaceContext
+export interface School {
+  id: string
+  name: string
+  country: string | null
+  domain: string | null
+  webPage: string | null
 }
+
+export type LeaderboardScope = 'global' | 'school' | 'friends'
+export type LeaderboardMetric = 'sentences' | 'bibliographies' | 'cites_earned'

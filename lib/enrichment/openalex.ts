@@ -1,7 +1,8 @@
 import type { SourceAuthorship, SourceKind, SourceRecord } from '@/types'
+import { CONTACT_EMAIL } from '@/lib/contact'
 
 const OPENALEX_BASE = 'https://api.openalex.org'
-const MAILTO = process.env.OPENALEX_MAILTO ?? 'contact@pergamum.com'
+const MAILTO = process.env.OPENALEX_MAILTO ?? CONTACT_EMAIL
 
 export interface OpenAlexWork {
   id: string
@@ -107,6 +108,51 @@ export async function searchOpenAlexByTitle(title: string): Promise<OpenAlexWork
   return (
     results.find((r) => (r.title ?? r.display_name ?? '').toLowerCase().trim() === normalized) ??
     results[0]
+  )
+}
+
+/** Find works matching author surname + publication year. */
+export async function searchOpenAlexByAuthorYear(
+  author: string,
+  year: string,
+  perPage = 8,
+): Promise<OpenAlexWork[]> {
+  const surname = author.trim().split(/\s+/).filter(Boolean).pop()
+  const y = year.slice(0, 4)
+  if (!surname || !/^(19|20)\d{2}$/.test(y)) return []
+
+  const select =
+    'id,doi,title,display_name,publication_year,publication_date,cited_by_count,fwci,type,abstract_inverted_index,authorships,primary_location,open_access,topics,biblio'
+  const lower = surname.toLowerCase()
+
+  const filterAuthor = async () => {
+    const params = new URLSearchParams({
+      filter: `publication_year:${y},author.display_name.search:${surname},is_retracted:false`,
+      per_page: String(perPage),
+      sort: 'cited_by_count:desc',
+      select,
+    })
+    const data = await fetchOpenAlex<{ results?: OpenAlexWork[] }>(`/works?${params.toString()}`)
+    return data?.results ?? []
+  }
+
+  const searchFallback = async () => {
+    const params = new URLSearchParams({
+      search: `${surname} ${y}`,
+      filter: `publication_year:${y},is_retracted:false`,
+      per_page: String(perPage),
+      sort: 'relevance_score:desc',
+      select,
+    })
+    const data = await fetchOpenAlex<{ results?: OpenAlexWork[] }>(`/works?${params.toString()}`)
+    return data?.results ?? []
+  }
+
+  let results = await filterAuthor()
+  if (!results.length) results = await searchFallback()
+
+  return results.filter((work) =>
+    work.authorships?.some((a) => (a.author?.display_name ?? '').toLowerCase().includes(lower)),
   )
 }
 

@@ -1,0 +1,4 @@
+# NitroPay ads.txt placeholder
+# Replace with the exact line(s) provided by NitroPay for your site.
+# Example format:
+# nitropay.com, SITE_ID, DIRECT

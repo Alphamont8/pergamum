@@ -1,0 +1,56 @@
+---
+description: Title capitalization for headings, section titles, and labels
+alwaysApply: true
+---
+
+# Title capitalization
+
+Use **title case** for headings, section titles, dialog titles, and prominent UI labels.
+
+## Capitalize
+
+- Nouns, verbs, adjectives, adverbs, pronouns
+- First and last word of the title (always)
+- Words four letters or longer (even if they would normally be lowercase)
+
+## Lowercase (filler / minor words)
+
+Keep these lowercase **unless** they are the first or last word:
+
+`a`, `an`, `the`, `and`, `but`, `or`, `nor`, `for`, `so`, `yet`, `at`, `by`, `in`, `of`, `on`, `to`, `up`, `as`, `per`, `via`, `vs`
+
+## Examples
+
+```
+// Good
+Add Friends
+Your Code
+How It Works
+Cite Your Draft
+Settings
+
+// Bad
+Add friends
+your code
+How it works
+Cite your draft
+```
+
+## Scope
+
+- Page titles (`h1`), section titles (`h2`/`h3`), panel headings, tab labels, dialog titles
+- Button labels that act as titles (e.g. section subtitles like "Your Code")
+- Skip: body copy, error messages, placeholders, sentence-case descriptions
+
+## Title + description spacing
+
+On **logged-in app pages** (`app/(app)/` and their components), wrap a heading and its description in `.pg-title-copy` (6px gap via `--title-desc-gap`, matching Delete Account in Settings).
+
+Do **not** use `.pg-title-copy` on auth pages (`app/(auth)/` login, onboarding).
+
+```tsx
+<div className="pg-title-copy">
+  <h2>Section Title</h2>
+  <p className="pg-muted">Description sentence here.</p>
+</div>
+```

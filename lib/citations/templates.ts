@@ -1,6 +1,6 @@
 import { plugins } from '@citation-js/core'
 import type { ReferencingStyleId } from '@/types'
-import { isBluebookStyle } from '@/utils/referencingStyle'
+import { isBluebookStyle, normalizeReferencingStyleId } from '@/utils/referencingStyle'
 
 /** CSL style files from the official CSL repository (jsDelivr CDN). */
 const REMOTE_CSL_STYLES: Record<string, string> = {
@@ -12,6 +12,13 @@ const REMOTE_CSL_STYLES: Record<string, string> = {
   'chicago-notes':
     'https://cdn.jsdelivr.net/gh/citation-style-language/styles@master/chicago-note-bibliography.csl',
   ieee: 'https://cdn.jsdelivr.net/gh/citation-style-language/styles@master/ieee.csl',
+  ama: 'https://cdn.jsdelivr.net/gh/citation-style-language/styles@master/american-medical-association.csl',
+  acs: 'https://cdn.jsdelivr.net/gh/citation-style-language/styles@master/american-chemical-society.csl',
+  asa: 'https://cdn.jsdelivr.net/gh/citation-style-language/styles@master/american-sociological-association.csl',
+  nature: 'https://cdn.jsdelivr.net/gh/citation-style-language/styles@master/nature.csl',
+  science: 'https://cdn.jsdelivr.net/gh/citation-style-language/styles@master/science.csl',
+  mhra: 'https://cdn.jsdelivr.net/gh/citation-style-language/styles@master/modern-humanities-research-association.csl',
+  oscola: 'https://cdn.jsdelivr.net/gh/citation-style-language/styles@master/oscola.csl',
 }
 
 /** Maps app referencing style IDs to Citation.js template names. */
@@ -23,6 +30,13 @@ const STYLE_TO_TEMPLATE: Record<string, string> = {
   'chicago-notes': 'chicago-notes',
   ieee: 'ieee',
   vancouver: 'vancouver',
+  ama: 'ama',
+  acs: 'acs',
+  asa: 'asa',
+  nature: 'nature',
+  science: 'science',
+  mhra: 'mhra',
+  oscola: 'oscola',
 }
 
 const fetchedTemplates = new Map<string, string>()
@@ -73,8 +87,9 @@ export async function ensureCitationTemplates(): Promise<void> {
 }
 
 export function resolveCitationTemplate(styleId: ReferencingStyleId): string | null {
-  if (styleId === 'none' || isBluebookStyle(styleId)) return null
-  return STYLE_TO_TEMPLATE[styleId] ?? 'apa'
+  const id = normalizeReferencingStyleId(styleId)
+  if (id === 'none' || isBluebookStyle(id)) return null
+  return STYLE_TO_TEMPLATE[id] ?? 'apa'
 }
 
 export function clearTemplateInit(): void {

@@ -1,4 +1,5 @@
 import type { SourceKind, SourceRecord } from '@/types'
+import { getDateParts, normalizeSourceForCitation } from './normalize'
 
 export interface CslItem {
   id: string
@@ -14,16 +15,22 @@ export interface CslItem {
   issue?: string
   page?: string
   abstract?: string
+  accessed?: { 'date-parts'?: number[][] }
 }
 
-function parseAuthorName(name: string): { family?: string; given?: string; literal?: string } {
+function parseAuthorName(
+  name: string,
+  asLiteral = false,
+): { family?: string; given?: string; literal?: string } {
   const trimmed = name.trim()
-  if (!trimmed) return { literal: 'Unknown' }
+  if (!trimmed) return { literal: 'Anonymous' }
+  // Organizations / teams must stay intact as CSL literals.
+  if (asLiteral) return { literal: trimmed }
   if (trimmed.includes(',')) {
     const [family, ...rest] = trimmed.split(',')
     return { family: family.trim(), given: rest.join(',').trim() || undefined }
   }
-  const parts = trimmed.split(/\s+/)
+  const parts = trimmed.split(/\s+/).filter(Boolean)
   if (parts.length === 1) return { family: parts[0] }
   return { family: parts[parts.length - 1], given: parts.slice(0, -1).join(' ') }
 }
@@ -42,6 +49,8 @@ function mapSourceKind(kind?: SourceKind, url?: string): string {
       return 'report'
     case 'thesis':
       return 'thesis'
+    case 'legal-case':
+      return 'legal_case'
     case 'webpage':
       return 'webpage'
     default:
@@ -49,38 +58,54 @@ function mapSourceKind(kind?: SourceKind, url?: string): string {
   }
 }
 
-function parseYear(source: SourceRecord): number[] | undefined {
-  const raw = source.publicationDate?.slice(0, 4) ?? source.year
-  if (!raw) return undefined
-  const year = parseInt(raw.replace(/\D/g, '').slice(0, 4), 10)
-  return Number.isFinite(year) ? [year] : undefined
-}
-
 export function sourceToCslItem(source: SourceRecord): CslItem {
-  const authors =
-    source.authorships?.map((a) => parseAuthorName(a.name)) ??
-    (source.authors
-      ? source.authors.split(/(?:,|&| and )+/).map((a) => parseAuthorName(a))
-      : [{ literal: 'Unknown' }])
+  const clean = normalizeSourceForCitation(source)
+  const authors = clean.authorships?.length
+    ? clean.authorships.map((a) => parseAuthorName(a.name, Boolean(a.literal)))
+    : clean.authors
+      ? clean.authors.split(/(?:,|&| and )+/).map((a) => parseAuthorName(a))
+      : [{ literal: 'Anonymous' }]
 
-  const yearParts = parseYear(source)
+  const dateParts = getDateParts(clean)
+  const container = clean.venue?.name
+  const publisher =
+    clean.sourceKind === 'webpage'
+      ? undefined
+      : clean.venue?.publisher && clean.venue.publisher !== container
+        ? clean.venue.publisher
+        : clean.publisher && clean.publisher !== container
+          ? clean.publisher
+          : undefined
+
   const item: CslItem = {
-    id: source.id,
-    type: mapSourceKind(source.sourceKind, source.url),
-    title: source.title,
+    id: clean.id,
+    type: mapSourceKind(clean.sourceKind, clean.url),
+    title: clean.title,
     author: authors,
-    publisher: source.venue?.publisher ?? source.publisher,
-    'container-title': source.venue?.name,
-    URL: source.url,
-    DOI: source.doi,
-    volume: source.biblio?.volume,
-    issue: source.biblio?.issue,
-    page: source.biblio?.pages,
-    abstract: source.abstract ?? source.summary,
+    publisher,
+    'container-title': container,
+    URL: clean.url,
+    DOI: clean.doi,
+    volume: clean.biblio?.volume,
+    issue: clean.biblio?.issue,
+    page: clean.biblio?.pages,
+    abstract: clean.abstract ?? clean.summary,
   }
 
-  if (yearParts) {
-    item.issued = { 'date-parts': [yearParts] }
+  if (dateParts?.length) {
+    item.issued = { 'date-parts': [dateParts] }
+  }
+
+  // Web articles: prefer full issued date; add accessed when date is missing.
+  const isArticle =
+    clean.sourceKind === 'webpage' ||
+    clean.sourceKind === 'report' ||
+    (Boolean(clean.url) && clean.sourceKind !== 'journal-article')
+  if (isArticle && (!dateParts || dateParts.length < 3)) {
+    const now = new Date()
+    item.accessed = {
+      'date-parts': [[now.getUTCFullYear(), now.getUTCMonth() + 1, now.getUTCDate()]],
+    }
   }
 
   return item

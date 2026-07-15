@@ -7,18 +7,22 @@ export async function signInWithOAuth(
   provider: OAuthProvider,
   redirectTo?: string,
 ) {
-  const origin =
-    typeof window !== 'undefined'
-      ? window.location.origin
-      : process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
+  if (typeof window === 'undefined') {
+    throw new Error('OAuth must be started in the browser')
+  }
 
-  const next = redirectTo ?? '/projects'
+  const origin = window.location.origin
+  const next = redirectTo && redirectTo.startsWith('/') ? redirectTo : '/'
 
   return supabase.auth.signInWithOAuth({
     provider,
     options: {
       redirectTo: `${origin}/auth/callback?next=${encodeURIComponent(next)}`,
       skipBrowserRedirect: false,
+      queryParams: {
+        access_type: 'offline',
+        prompt: 'consent',
+      },
     },
   })
 }

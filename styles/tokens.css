@@ -1,92 +1,98 @@
-:root {
-  color-scheme: light;
+:root,
+[data-theme='light'] {
+  --bg: #fafafa;
+  --bg-elevated: #ffffff;
+  --fg: #1a1a1a;
+  --fg-muted: #6b6b6b;
+  --fg-subtle: #9a9a9a;
+  --accent: #2f5d50;
+  --accent-soft: rgba(47, 93, 80, 0.08);
+  --accent-hover: #244a40;
+  --border-hairline: rgba(26, 26, 26, 0.08);
+  --danger: #b42318;
+  --success: #067647;
+  --shadow-soft: 0 8px 30px rgba(0, 0, 0, 0.04);
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --font-sans: var(--font-hanken), ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --chat-max: 1080px;
+  --topbar-h: 56px;
+  --title-desc-gap: 6px;
+  --page-title-size: 40px;
+  --page-title-tracking: -0.035em;
+  --sidebar-w: 300px;
+}
 
-  --color-bg-solid: #f5f0e8;
+[data-theme='dark'] {
+  --bg: #0f0f0f;
+  --bg-elevated: #161616;
+  --fg: #f2f2f2;
+  --fg-muted: #a0a0a0;
+  --fg-subtle: #6e6e6e;
+  --accent: #7eb8a8;
+  --accent-soft: rgba(126, 184, 168, 0.12);
+  --accent-hover: #9ad0c0;
+  --border-hairline: rgba(242, 242, 242, 0.08);
+  --danger: #f97066;
+  --success: #47cd89;
+  --shadow-soft: 0 8px 30px rgba(0, 0, 0, 0.35);
+}
 
-  /* Glass surfaces — taskbar/popover use dark tokens below */
-  --glass-bg: rgba(255, 255, 255, 0.92);
-  --glass-bg-hover: #f5f0e8;
-  --glass-bg-subtle: var(--taskbar-popover-bg);
-  --glass-bg-subtle-hover: rgba(28, 32, 42, 0.98);
-  --glass-bg-taskbar: var(--taskbar-surface);
-  --glass-blur: 20px;
-  --glass-border: var(--taskbar-border);
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
 
-  /* Legacy chip tokens */
-  --chip-border-light: #d4ccc0;
-  --chip-border-strong: #bfb5a6;
-  --chip-fill-viewed: #fffcf7;
+html,
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+}
 
-  /* Global typography (legacy) */
-  --color-text: #1e1e1e;
-  --color-text-muted: #616161;
-  --color-text-faint: #8a8a8a;
+body {
+  font-family: var(--font-sans);
+  font-weight: 400;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--fg);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
 
-  --color-btn-fill: #0078d4;
-  --color-btn-text: #ffffff;
-  --color-btn-fill-hover: #106ebe;
+a {
+  color: inherit;
+  text-decoration: none;
+}
 
-  --color-highlight: rgba(0, 120, 212, 0.22);
+button,
+input,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+}
 
-  --app-margin: 8px;
-  --taskbar-bottom: 14px;
-  --tab-gap: var(--app-margin);
-  --tab-manager-inset: 4px;
+button {
+  cursor: pointer;
+}
 
-  --menu-bar-height: 40px;
-  --menu-brand-min-width: 200px;
-  --taskbar-height: 52px;
-  --taskbar-width: min(820px, calc(100% - var(--app-margin) * 2));
-  --popover-width: var(--taskbar-width);
-  --taskbar-radius: 999px;
-  --taskbar-center-bottom: calc(var(--taskbar-bottom) + var(--taskbar-height) / 2);
-  --popover-radius-top: 18px;
-  --popover-compact-height: 2.75rem;
-  --tab-radius: 8px;
+button:disabled,
+input:disabled,
+textarea:disabled,
+select:disabled {
+  cursor: default;
+}
 
-  /* Dark taskbar + popover (unchanged from original dark chrome) */
-  --taskbar-surface: rgba(4, 8, 16, 0.72);
-  --taskbar-border: rgba(255, 255, 255, 0.1);
-  --taskbar-text: #ffffff;
-  --taskbar-text-muted: rgba(255, 255, 255, 0.62);
-  --taskbar-text-faint: rgba(255, 255, 255, 0.38);
-  --taskbar-btn-fill: #c8d0dc;
-  --taskbar-btn-text: #121820;
-  --taskbar-btn-fill-hover: #d8e0ea;
-  --taskbar-popover-bg: rgba(12, 16, 24, 0.94);
-  --taskbar-popover-border: rgba(255, 255, 255, 0.12);
-  --taskbar-highlight: rgba(140, 190, 255, 0.35);
+::selection {
+  background: var(--accent-soft);
+  color: var(--fg);
+}
 
-  /* Workspace chrome — warm off-white */
-  --workspace-bg: #fffcf7;
-  --workspace-header-bg: #efe9e0;
-  --workspace-tab-inactive: #e5ddd2;
-  --workspace-surface: #fffcf7;
-  --workspace-surface-hover: #ebe4d9;
-  --workspace-border: #d9d0c4;
-  --workspace-border-subtle: #e8e0d4;
-  --workspace-radius: 12px;
-  --workspace-text: #2a2622;
-  --workspace-text-muted: #6b6358;
-  --workspace-text-faint: #9a9186;
-  --workspace-accent: #5762d5;
-  --workspace-accent-hover: #4a54be;
-  --workspace-accent-subtle: rgba(87, 98, 213, 0.12);
-  --workspace-link: #5762d5;
-  --workspace-focus-ring: rgba(87, 98, 213, 0.35);
-  --workspace-shadow: 0 1px 3px rgba(42, 32, 18, 0.08);
-  --workspace-font: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-
-  --chrome-bg: #fffcf7;
-  --chrome-text: #2a2622;
-
-  --edge-glint: linear-gradient(
-    135deg,
-    rgba(218, 192, 172, 0.35) 0%,
-    rgba(255, 252, 247, 0.5) 40%,
-    rgba(180, 160, 140, 0.12) 70%,
-    rgba(218, 192, 172, 0.2) 100%
-  );
-
-  --font-sans: 'Montserrat', system-ui, -apple-system, sans-serif;
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
