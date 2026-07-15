@@ -7,8 +7,8 @@ import {
   createCitationSearchCache,
   type SentenceCitationResult,
 } from '@/lib/cite/pipeline'
+import { formatCitationJobsInDocumentOrder, type CitationJob } from '@/lib/cite/documentOrderFormatting'
 import { claimQueryFromAnalyzed, type AnalyzedSentence } from '@/lib/cite/analyze'
-import { formatBibliographyEntry, formatInTextCitation } from '@/lib/citations'
 import { isLlmConfigured } from '@/lib/ai/provider'
 import { creditCites, getUserCitesBalance } from '@/lib/cites/ledger'
 import {
@@ -175,23 +175,6 @@ export async function POST(request: Request) {
   const allSources = [...priorSources]
   if (result.status === 'done' && result.record) {
     allSources.push(result.record)
-    try {
-      result.bibliography = await formatBibliographyEntry(
-        result.record,
-        settings.styleId,
-        allSources,
-      )
-      if (settings.inText && !result.preserveExistingInText) {
-        const prior = priorSources.map((s) => s.id)
-        result.inText = await formatInTextCitation(result.record, settings.styleId, allSources, {
-          priorSourceIds: prior,
-        })
-      } else if (result.preserveExistingInText) {
-        result.inText = undefined
-      }
-    } catch {
-      /* keep result without formatted strings */
-    }
   }
 
   await service
@@ -245,6 +228,40 @@ export async function POST(request: Request) {
   else existingCitations.push(nextCitation)
   existingCitations.sort((a, b) => a.index - b.index)
 
+  const formatJobs: CitationJob[] = []
+  for (const c of existingCitations) {
+    const record = (c as { record?: SourceRecord }).record
+    if (c.status !== 'done' || !record) continue
+    formatJobs.push({
+      sentence: {
+        index: c.index,
+        text: c.sentence ?? sentences.find((s) => s.index === c.index)?.text ?? '',
+      },
+      result: {
+        status: 'done',
+        record,
+      },
+    })
+  }
+
+  const { bibliography } = await formatCitationJobsInDocumentOrder(
+    formatJobs,
+    settings.styleId,
+    settings,
+  )
+
+  for (const job of formatJobs) {
+    const idx = existingCitations.findIndex((c) => c.index === job.sentence.index)
+    if (idx >= 0) {
+      existingCitations[idx] = {
+        ...existingCitations[idx],
+        inText: job.result.inText,
+        bibliography: job.result.bibliography,
+        record: job.result.record,
+      }
+    }
+  }
+
   const essayCitations = existingCitations
     .filter((c) => c.status === 'done' && c.inText)
     .map((c) => ({
@@ -255,14 +272,11 @@ export async function POST(request: Request) {
     }))
 
   const originalEssay = priorResult.originalEssay || generation.essay_input
-  const essayWithCitations = applyInTextCitations(originalEssay, essayCitations)
-  const bibliography = [
-    ...new Set(
-      existingCitations
-        .map((c) => c.bibliography)
-        .filter((b): b is string => Boolean(b)),
-    ),
-  ]
+  const essayWithCitations = applyInTextCitations(
+    originalEssay,
+    essayCitations,
+    settings.styleId,
+  )
 
   const resultPayload = {
     essay: essayWithCitations,

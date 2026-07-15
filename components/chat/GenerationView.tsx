@@ -45,6 +45,7 @@ interface GenerationRow {
       errorMessage?: string
     }>
   } | null
+  settings?: { styleId?: string } | null
   created_at: string
   error_message?: string | null
 }
@@ -100,10 +101,11 @@ export function GenerationView({ generation }: { generation: GenerationRow }) {
           correction: null,
           accepted: false,
         })),
+        generation.settings?.styleId,
       )
     }
     return result?.essay || original
-  }, [generation.essay_input, result])
+  }, [generation.essay_input, generation.settings?.styleId, result])
 
   const formattedDraft = formatEssayForDisplay(draftText)
   const bibliography = result?.bibliography ?? []

@@ -13,6 +13,17 @@ export function isNumericReferencingStyle(id: ReferencingStyleId): boolean {
   return id === 'ieee' || id === 'vancouver' || id === 'nature' || id === 'science'
 }
 
+/** AMA and ACS use superscript numbers in running text. */
+export function isSuperscriptReferencingStyle(id: ReferencingStyleId): boolean {
+  return (
+    id === 'ama' ||
+    id === 'acs' ||
+    id === 'chicago-notes' ||
+    id === 'oscola' ||
+    id === 'mhra'
+  )
+}
+
 export function isNotesReferencingStyle(id: ReferencingStyleId): boolean {
   return id === 'chicago-notes' || id === 'oscola'
 }

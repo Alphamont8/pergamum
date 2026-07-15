@@ -4,11 +4,12 @@
  */
 import { Cite } from '@citation-js/core'
 import type { ReferencingStyleId, SourceRecord } from '@/types'
-import { isBluebookStyle, isNumericReferencingStyle } from '@/utils/referencingStyle'
+import { citationNumberForSource } from '@/lib/citations/numbering'
+import { isBluebookStyle, isNumericReferencingStyle, isSuperscriptReferencingStyle } from '@/utils/referencingStyle'
 import { sourcesToCslItems, type CslItem } from './csl'
 import { formatBibliographyFallback, formatInTextFallback } from './fallback'
 import { normalizeSourceForCitation } from './normalize'
-import { ensureCitationTemplates, resolveCitationTemplate } from './templates'
+import { clearTemplateInit, ensureCitationTemplates, resolveCitationTemplate } from './templates'
 
 const DEFAULT_LANG = 'en-US'
 
@@ -77,8 +78,7 @@ export async function formatInTextCitation(
   const cleanAll = allSources.map(normalizeSourceForCitation)
   if (isBluebookStyle(styleId)) {
     const num = options?.priorSourceIds
-      ? new Set(options.priorSourceIds).size +
-        (options.priorSourceIds.includes(clean.id) ? 0 : 1)
+      ? citationNumberForSource(clean.id, options.priorSourceIds)
       : undefined
     return formatInTextFallback(clean, styleId, num)
   }
@@ -108,12 +108,12 @@ export async function formatInTextCitation(
     /* fall through */
   }
 
-  const num = isNumericReferencingStyle(styleId)
-    ? options?.priorSourceIds
-      ? [...new Set(options.priorSourceIds)].indexOf(clean.id) + 1 ||
-        new Set([...options.priorSourceIds, clean.id]).size
-      : 1
-    : undefined
+  const num =
+    isNumericReferencingStyle(styleId) || isSuperscriptReferencingStyle(styleId)
+      ? options?.priorSourceIds
+        ? citationNumberForSource(clean.id, options.priorSourceIds)
+        : 1
+      : undefined
   return formatInTextFallback(clean, styleId, num)
 }
 
@@ -192,8 +192,6 @@ export async function formatCitationsInDocumentOrder(
 
   return formatted
 }
-
-import { clearTemplateInit } from './templates'
 
 export function clearCitationEngineCache(): void {
   clearTemplateInit()

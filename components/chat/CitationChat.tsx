@@ -355,6 +355,7 @@ export function CitationChat() {
         const data = (await res.json()) as {
           generation: {
             id: string
+            title?: string | null
             essay_input: string
             status: string
             cites_required: number
@@ -380,6 +381,9 @@ export function CitationChat() {
         }
         setGenerationId(gen.id)
         setSentences(loadedSentences)
+        if (typeof gen.title === 'string' && gen.title.trim()) {
+          setDraftTitle(gen.title.trim())
+        }
         setCitesRequired(Number(gen.cites_required ?? loadedSentences.length))
         setEnough(true)
         setError(null)
@@ -510,6 +514,7 @@ export function CitationChat() {
 
     setPhase('analyzing')
     setError(null)
+    setDraftTitle(null)
     setResult(null)
     setLiveCitations([])
     setAnalysisReasoning(null)
@@ -549,6 +554,13 @@ export function CitationChat() {
       setEnough(data.enough)
       if (typeof data.title === 'string' && data.title.trim()) {
         setDraftTitle(data.title.trim())
+        if (data.generationId) {
+          dispatchLibrarySync({
+            action: 'title',
+            id: data.generationId,
+            title: data.title.trim(),
+          })
+        }
       }
       const reasoning =
         typeof data.reasoning === 'string' && data.reasoning.trim()
@@ -574,13 +586,6 @@ export function CitationChat() {
           : `Found ${data.citesRequired} sentence${data.citesRequired === 1 ? '' : 's'} that need a source · ${data.citesRequired} Cites required`,
       )
       if (data.citesRequired === 0) {
-        if (typeof data.title === 'string' && data.title && data.generationId) {
-          dispatchLibrarySync({
-            action: 'title',
-            id: data.generationId,
-            title: data.title,
-          })
-        }
         dispatchLibrarySync({ action: 'refresh' })
       }
     } catch (err) {
@@ -806,6 +811,14 @@ export function CitationChat() {
           }
           if (event === 'complete') {
             const payload = data.result as ResultPayload & { citesRefunded?: number }
+            if (typeof data.title === 'string' && data.title.trim()) {
+              setDraftTitle(data.title.trim())
+              dispatchLibrarySync({
+                action: 'title',
+                id: generationId,
+                title: data.title.trim(),
+              })
+            }
             setResult(payload)
             setPhase('theater_done')
             setActiveIndexes([])
@@ -1227,6 +1240,7 @@ export function CitationChat() {
                   progress={progress}
                   statusMessage={statusMessage}
                   title={draftTitle}
+                  styleId={settings.styleId}
                   possibleMatches={possibleMatches}
                   mode={
                     phase === 'theater_done' ? 'complete' : phase === 'error' ? 'error' : 'running'

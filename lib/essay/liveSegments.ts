@@ -1,3 +1,6 @@
+import type { ReferencingStyleId } from '@/types'
+import { splitInTextCitation } from '@/lib/cite/insertInTextCitation'
+
 export type LiveSentenceStatus = 'pending' | 'active' | 'done' | 'failed'
 
 export interface LiveSentenceState {
@@ -26,6 +29,7 @@ export function buildLiveEssaySegments(
   essay: string,
   sentences: Array<{ index: number; text: string }>,
   live: Record<number, LiveSentenceState>,
+  styleId?: ReferencingStyleId,
 ): LiveSegment[] {
   if (!essay) return []
 
@@ -79,20 +83,12 @@ export function buildLiveEssaySegments(
 }
 
 /** Insert in-text citation before terminal punctuation (mirrors applyInTextCitations). */
-export function withInTextCitation(sentence: string, inText: string): { body: string; mark: string; tail: string } {
-  // Already cited in the pasted draft — leave the existing mark alone.
-  if (/\([A-Z][^)]{0,80}?(?:19|20)\d{2}|\[[0-9]+\]|\(\d+\)/.test(sentence)) {
-    return { body: sentence, mark: '', tail: '' }
-  }
-  const trimmed = sentence.trimEnd()
-  if (/[.!?]$/.test(trimmed)) {
-    return {
-      body: trimmed.slice(0, -1),
-      mark: inText,
-      tail: trimmed.slice(-1) + sentence.slice(trimmed.length),
-    }
-  }
-  return { body: sentence, mark: inText, tail: '' }
+export function withInTextCitation(
+  sentence: string,
+  inText: string,
+  styleId?: ReferencingStyleId,
+): { body: string; mark: string; tail: string } {
+  return splitInTextCitation(sentence, inText, styleId)
 }
 
 export function formatElapsed(ms: number): string {

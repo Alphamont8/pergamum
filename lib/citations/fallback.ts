@@ -74,6 +74,25 @@ export function formatBibliographyFallback(
   return `${author} (${dateForBib}). ${title}.${venue ? ` ${venue}.` : ''}${url}`
 }
 
+function toSuperscriptNumber(n: number): string {
+  const map: Record<string, string> = {
+    '0': '⁰',
+    '1': '¹',
+    '2': '²',
+    '3': '³',
+    '4': '⁴',
+    '5': '⁵',
+    '6': '⁶',
+    '7': '⁷',
+    '8': '⁸',
+    '9': '⁹',
+  }
+  return String(n)
+    .split('')
+    .map((d) => map[d] ?? d)
+    .join('')
+}
+
 export function formatInTextFallback(
   source: SourceRecord,
   styleId: ReferencingStyleId,
@@ -81,18 +100,22 @@ export function formatInTextFallback(
 ): string {
   const author = firstAuthorFamily(source)
   const y = yearLabel(source)
+  const n = citationNumber ?? 1
 
   if (styleId === 'ieee' || styleId === 'vancouver' || styleId === 'nature' || styleId === 'science') {
-    return `[${citationNumber ?? '?'}]`
+    return `[${n}]`
+  }
+  if (styleId === 'ama' || styleId === 'acs') {
+    return toSuperscriptNumber(n)
   }
   if (styleId === 'chicago-notes' || styleId === 'turabian-notes' || styleId === 'oscola') {
-    return String(citationNumber ?? '¹')
+    return toSuperscriptNumber(n)
   }
   if (styleId === 'mla' || styleId === 'mhra') return `(${author})`
   if (styleId === 'chicago-author-date' || styleId === 'turabian-author-date' || styleId === 'asa') {
     return `(${author} ${y})`
   }
-  if (styleId === 'harvard' || styleId === 'acs') return `(${author}, ${y})`
-  if (styleId === 'bluebook' || styleId === 'ama') return `(${author}, ${y})`
+  if (styleId === 'harvard') return `(${author}, ${y})`
+  if (styleId === 'bluebook') return `(${author}, ${y})`
   return `(${author}, ${y})`
 }

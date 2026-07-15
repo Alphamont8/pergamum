@@ -29,6 +29,7 @@ export function GenerationTheater({
   progress,
   statusMessage,
   title,
+  styleId,
   mode,
   error,
   possibleMatches = {},
@@ -48,6 +49,7 @@ export function GenerationTheater({
   progress: { current: number; total: number }
   statusMessage: string
   title?: string | null
+  styleId?: string
   mode: TheaterMode
   error: string | null
   possibleMatches?: Record<number, PossibleMatchChip[]>
@@ -122,6 +124,7 @@ export function GenerationTheater({
             sentences={sentences}
             live={live}
             focusIndex={mode === 'running' || retryingIndex != null ? focusIndex : null}
+            styleId={styleId}
           />
           <PipelineActivityRail
             sentences={sentences}

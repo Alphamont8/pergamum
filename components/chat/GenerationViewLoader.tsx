@@ -29,6 +29,7 @@ interface GenerationRow {
       errorMessage?: string
     }>
   } | null
+  settings?: { styleId?: string } | null
   created_at: string
   error_message?: string | null
 }

@@ -82,7 +82,10 @@ export async function ensureGenerationTitle(
     return existingTitle!.trim()
   }
   const title = await generateEssayTitle(essay)
-  await service.from('generations').update({ title }).eq('id', generationId)
+  const { error } = await service.from('generations').update({ title }).eq('id', generationId)
+  if (error) {
+    return existingTitle?.trim() || title
+  }
   return title
 }
 

@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
+import type { ReferencingStyleId } from '@/types'
 import {
   buildLiveEssaySegments,
   withInTextCitation,
@@ -12,14 +13,16 @@ export function LiveEssayCanvas({
   sentences,
   live,
   focusIndex,
+  styleId,
 }: {
   essay: string
   sentences: Array<{ index: number; text: string }>
   live: Record<number, LiveSentenceState>
   focusIndex: number | null
+  styleId?: ReferencingStyleId
 }) {
   const rootRef = useRef<HTMLDivElement>(null)
-  const segments = buildLiveEssaySegments(essay, sentences, live)
+  const segments = buildLiveEssaySegments(essay, sentences, live, styleId)
 
   useEffect(() => {
     if (focusIndex == null || !rootRef.current) return
@@ -44,7 +47,7 @@ export function LiveEssayCanvas({
 
             const parts =
               seg.status === 'done' && seg.inText
-                ? withInTextCitation(seg.text, seg.inText)
+                ? withInTextCitation(seg.text, seg.inText, styleId)
                 : null
             const showCite = Boolean(parts?.mark)
 
@@ -56,7 +59,7 @@ export function LiveEssayCanvas({
               >
                 {showCite && parts ? (
                   <>
-                    {parts.body}{' '}
+                    {parts.body}
                     <span key={seg.citeKey} className="gt-cite">
                       {parts.mark}
                     </span>

@@ -5,6 +5,7 @@ import {
   createCitationSearchCache,
   type CitationPipelineStage,
 } from '@/lib/cite/pipeline'
+import { formatCitationJobsInDocumentOrder } from '@/lib/cite/documentOrderFormatting'
 import { stageMessage } from '@/lib/cite/stageCopy'
 import { formatBibliographyEntry, formatInTextCitation } from '@/lib/citations'
 import { claimQueryFromAnalyzed, type AnalyzedSentence as CiteAnalyzedSentence } from '@/lib/cite/analyze'
@@ -129,8 +130,11 @@ export async function POST(request: Request) {
         // Fallback for drafts analyzed before titles were generated at analyze time.
         const titlePromise = needsGeneratedTitle(generation.title)
           ? generateEssayTitle(generation.essay_input).then(async (title) => {
-              await service.from('generations').update({ title }).eq('id', generation.id)
-              send('title', { title })
+              const { error } = await service
+                .from('generations')
+                .update({ title })
+                .eq('id', generation.id)
+              if (!error) send('title', { title })
               return title
             })
           : Promise.resolve(generation.title as string)
@@ -154,8 +158,6 @@ export async function POST(request: Request) {
           )
         }
 
-        const allSources: SourceRecord[] = []
-        /** Shared across parallel workers — reuse winners to skip duplicate searches. */
         const sharedSourcesRef: { current: SourceRecord[] } = { current: [] }
         let completed = 0
 
@@ -306,33 +308,15 @@ export async function POST(request: Request) {
           Promise.all(Array.from({ length: CONCURRENCY }, () => worker())),
         ])
 
-        // Rebuild bibliography / in-text in document order with normalized metadata.
         const citationResults = jobs.filter(Boolean)
-        for (const c of citationResults) {
-          if (c.result.status === 'done' && c.result.record) {
-            allSources.push(c.result.record)
-          }
-        }
+        const { bibliography: uniqueBib } = await formatCitationJobsInDocumentOrder(
+          citationResults,
+          settings.styleId,
+          settings,
+        )
 
         for (const c of citationResults) {
           if (c.result.status !== 'done' || !c.result.record) continue
-          const idx = allSources.findIndex((s) => s.id === c.result.record!.id)
-          const prior = allSources.slice(0, Math.max(0, idx)).map((s) => s.id)
-          c.result.bibliography = await formatBibliographyEntry(
-            c.result.record,
-            settings.styleId,
-            allSources,
-          )
-          if (settings.inText && !c.result.preserveExistingInText) {
-            c.result.inText = await formatInTextCitation(
-              c.result.record,
-              settings.styleId,
-              allSources,
-              { priorSourceIds: prior },
-            )
-          } else if (c.result.preserveExistingInText) {
-            c.result.inText = undefined
-          }
           await service
             .from('generation_citations')
             .update({
@@ -377,12 +361,11 @@ export async function POST(request: Request) {
             accepted: false,
           }))
 
-        const essayWithCitations = applyInTextCitations(generation.essay_input, essayCitations)
-        const bibliography = citationResults
-          .filter((c) => c.result.bibliography)
-          .map((c) => c.result.bibliography as string)
-
-        const uniqueBib = [...new Set(bibliography)]
+        const essayWithCitations = applyInTextCitations(
+          generation.essay_input,
+          essayCitations,
+          settings.styleId,
+        )
 
         const resultPayload = {
           essay: essayWithCitations,
@@ -402,6 +385,7 @@ export async function POST(request: Request) {
             url: c.result.record?.url,
             doi: c.result.record?.doi,
             errorMessage: c.result.errorMessage,
+            record: c.result.status === 'done' ? c.result.record : undefined,
           })),
           citesRefunded: failedCount > 0 ? failedCount : 0,
         }
@@ -424,7 +408,13 @@ export async function POST(request: Request) {
           await service.rpc('increment_bibliographies', { p_user_id: userId })
         }
 
-        send('complete', { generationId: generation.id, result: resultPayload })
+        const finalTitle = await titlePromise.catch(() => generation.title as string)
+
+        send('complete', {
+          generationId: generation.id,
+          title: needsGeneratedTitle(finalTitle) ? undefined : finalTitle,
+          result: resultPayload,
+        })
         controller.close()
       } catch (err) {
         const message = err instanceof Error ? err.message : "We couldn't finish citation generation."

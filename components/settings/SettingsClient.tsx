@@ -592,41 +592,40 @@ export function SettingsClient({
 
           <div className={`settings-plan__card ${isPro ? 'is-pro' : ''}`.trim()}>
             <div className="settings-plan__summary">
-              <div className="settings-plan__column">
-                <div className="settings-plan__stat">
-                  <span className="settings-plan__stat-label">Current Plan</span>
-                  <p
-                    className={`settings-plan__stat-value ${isPro ? 'is-pro' : ''}`.trim()}
-                  >
-                    {planTierLabel}
-                  </p>
-                  <span
-                    className={`settings-plan__badge is-${planStatus.tone}`.trim()}
-                  >
-                    {planStatus.label}
-                  </span>
-                </div>
-                <Link
-                  href="/upgrade"
-                  className="pg-btn pg-btn--success pg-btn--sm settings-plan__action"
+              <div className="settings-plan__stat">
+                <span className="settings-plan__stat-label">Current Plan</span>
+                <p
+                  className={`settings-plan__stat-value ${isPro ? 'is-pro' : ''}`.trim()}
                 >
-                  {upgradeLabel}
-                </Link>
-              </div>
-              <div className="settings-plan__column">
-                <div className="settings-plan__stat">
-                  <span className="settings-plan__stat-label">Cites</span>
-                  <p className="settings-plan__stat-value">
-                    {initial.citesBalance.toLocaleString()}
-                  </p>
-                </div>
-                <Link
-                  href="/cites"
-                  className="pg-btn pg-btn--success pg-btn--sm settings-plan__action"
+                  {planTierLabel}
+                </p>
+                <span
+                  className={`settings-plan__badge is-${planStatus.tone}`.trim()}
                 >
-                  Open Cites
-                </Link>
+                  {planStatus.label}
+                </span>
               </div>
+              <div className="settings-plan__stat">
+                <span className="settings-plan__stat-label">Cites</span>
+                <p className="settings-plan__stat-value">
+                  {initial.citesBalance.toLocaleString()}
+                </p>
+              </div>
+            </div>
+
+            <div className="settings-plan__actions">
+              <Link
+                href="/upgrade"
+                className="pg-btn pg-btn--success pg-btn--sm settings-plan__action"
+              >
+                {upgradeLabel}
+              </Link>
+              <Link
+                href="/cites"
+                className="pg-btn pg-btn--success pg-btn--sm settings-plan__action"
+              >
+                Open Cites
+              </Link>
             </div>
 
             <p className="settings-plan__detail">{planDetail}</p>

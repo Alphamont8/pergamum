@@ -126,11 +126,10 @@
   gap: 16px 20px;
 }
 
-.settings-plan__column {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  min-width: 0;
+.settings-plan__actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 20px;
 }
 
 .settings-plan__stat {

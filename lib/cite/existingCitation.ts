@@ -33,9 +33,9 @@ const PARENTHETICAL_RE =
 const NARRATIVE_RE =
   /\b([A-Z][\p{L}'’.-]+(?:\s+(?:and|&)\s+[A-Z][\p{L}'’.-]+|\s+et\s+al\.?)?)\s*\(((?:19|20)\d{2}[a-z]?)\)/u
 
-/** Trailing author–year / bracket cite near end of sentence (for double-cite guard). */
+/** Trailing author–year / bracket / superscript cite near end of sentence (for double-cite guard). */
 const TRAILING_CITE_RE =
-  /(?:\([A-Z][^)]{0,80}?(?:19|20)\d{2}[a-z]?[^)]{0,40}\)|\[[0-9]+(?:,\s*[0-9]+)*\]|\(\d+\))\s*[.!?…]?\s*$/u
+  /(?:\([A-Z][^)]{0,80}?(?:19|20)\d{2}[a-z]?[^)]{0,40}\)|\[[0-9]+(?:,\s*[0-9]+)*\]|\(\d+\)|[¹²³⁴⁵⁶⁷⁸⁹⁰]+)\s*[.!?…]?\s*$/u
 
 function splitAuthorNames(authorBlob: string): string[] {
   const cleaned = authorBlob

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createServiceClient } from '@/lib/supabase/server'
+import { ensureGenerationTitle } from '@/lib/essay/title'
 
 const patchSchema = z.object({
   title: z.string().trim().min(1).max(120).optional(),
@@ -30,6 +31,20 @@ export async function GET(
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   if (!data) return NextResponse.json({ error: "We couldn't find that." }, { status: 404 })
+
+  if (data.essay_input) {
+    const service = await createServiceClient()
+    const title = await ensureGenerationTitle(
+      service,
+      data.id,
+      data.essay_input,
+      data.title,
+    )
+    if (title !== data.title) {
+      data.title = title
+    }
+  }
+
   return NextResponse.json({ generation: data })
 }
 
