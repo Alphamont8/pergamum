@@ -4,7 +4,7 @@ import { FormEvent, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/Button'
-import '../login/login.css'
+import '../../login/login.css'
 
 export default function ResetPasswordPage() {
   const router = useRouter()

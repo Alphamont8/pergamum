@@ -426,7 +426,6 @@ export function CitationChat() {
     return () => {
       cancelled = true
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot resume from URL
   }, [router, searchParams, suggestionsAvailable, userId])
 
   useEffect(() => {
