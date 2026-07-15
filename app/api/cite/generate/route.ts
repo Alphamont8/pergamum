@@ -17,7 +17,7 @@ import {
 import { generateEssayTitle, needsGeneratedTitle } from '@/lib/essay/title'
 import type { GenerationSettings, SourceRecord } from '@/types'
 
-export const maxDuration = 800
+export const maxDuration = 300
 export const runtime = 'nodejs'
 
 type AnalyzedSentence = CiteAnalyzedSentence
