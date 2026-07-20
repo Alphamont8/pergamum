@@ -1,5 +1,6 @@
 import { z } from 'zod'
-import { completeStructured } from '@/lib/ai/provider'
+import { complete, completeStructured } from '@/lib/ai/provider'
+import { locateSentenceInEssay } from '@/lib/essay/alignSentences'
 import {
   ANALYZE_ESSAY_SYSTEM,
   CONFIRM_MATCH_SYSTEM,
@@ -49,7 +50,9 @@ const existingCitationSchema = z
 
 const sentenceAnalyzeSchema = z.object({
   index: z.number().int().nonnegative(),
-  text: z.string().min(1),
+  /** Exact essay span; may be missing from flaky model output — recovered below. */
+  text: z.string().min(1).optional(),
+  sentence: z.string().min(1).optional(),
   reason: z.string().optional(),
   /** Routes search: academic DBs only, news/web first, or full cascade. */
   claimType: claimTypeSchema.default('mixed'),
@@ -74,7 +77,7 @@ export const analyzeSchema = z.object({
   sentences: z.array(sentenceAnalyzeSchema),
 })
 
-export type AnalyzedSentence = z.infer<typeof sentenceAnalyzeSchema>
+export type AnalyzedSentence = z.infer<typeof sentenceAnalyzeSchema> & { text: string }
 
 export interface EssayAnalysis {
   sentences: AnalyzedSentence[]
@@ -145,45 +148,120 @@ export function claimQueryFromAnalyzed(sentence: AnalyzedSentence): ClaimQuery |
   }
 }
 
+function inferSubjectFlags(essay: string): { medical: boolean; legal: boolean } {
+  const t = essay.toLowerCase()
+  const medicalHits = (
+    t.match(
+      /\b(hypertension|cardiovascular|blood pressure|clinical|patient|pharma|epidemiolog|disease|treatment|diagnosis|hospital|biomedical|ace inhibitor|public health)\b/g,
+    ) ?? []
+  ).length
+  const legalHits = (
+    t.match(
+      /\b(strict scrutiny|equal protection|due process|constitutional|statute|court|doctrine|plaintiff|defendant|amendment|judicial review|compelling interest|narrowly tailored|classification)\b/g,
+    ) ?? []
+  ).length
+  return {
+    medical: medicalHits >= 2 && medicalHits >= legalHits,
+    legal: legalHits >= 2 && legalHits > medicalHits,
+  }
+}
+
+function preferNewsClaimType(
+  claimType: ClaimType,
+  text: string,
+  sourceTier: GenerationSettings['sourceTier'],
+): ClaimType {
+  if (sourceTier === 'academic') return 'academic'
+  if (claimType === 'academic' || claimType === 'news') return claimType
+  const t = text.toLowerCase()
+  const recentYear = /\b(202[3-9]|2030)\b/.test(t)
+  const newsy =
+    /\b(announced|act allocated|policy|government|onshoring|billions|headline|company said|press release)\b/i.test(
+      t,
+    )
+  if (recentYear && newsy) return 'news'
+  if (newsy && !/\b(meta-analysis|randomized|peer-reviewed|theory|mechanism)\b/i.test(t)) {
+    return 'news'
+  }
+  return claimType === 'mixed' ? 'academic' : claimType
+}
+
+function recoverSentenceText(
+  essay: string,
+  raw: z.infer<typeof sentenceAnalyzeSchema>,
+): string | null {
+  const candidates = [raw.text, raw.sentence, raw.claim].filter(
+    (v): v is string => typeof v === 'string' && v.trim().length > 0,
+  )
+  for (const candidate of candidates) {
+    const located = locateSentenceInEssay(essay, candidate)
+    if (located) return located
+    if (essay.includes(candidate.trim())) return candidate.trim()
+  }
+  return candidates[0]?.trim() || null
+}
+
 export async function analyzeEssayForCitations(
   essay: string,
   settings: GenerationSettings,
 ): Promise<EssayAnalysis> {
-  // Stable system prefix caches across essays; only settings + essay vary (essay last).
-  const result = await completeStructured(
-    analyzeSchema,
-    [
-      {
-        role: 'user',
-        content: `Settings:
+  const userContent = `Settings:
 - Prefer academic sources: ${settings.sourceTier === 'academic' ? 'yes, academic only' : 'academic preferred but news/web ok'}
 - Recency preference: ${settings.recency}
 
 Essay:
 """
 ${essay}
-"""`,
-      },
-    ],
-    {
-      system: ANALYZE_ESSAY_SYSTEM,
-      temperature: 0.2,
-      maxTokens: 10000,
-    },
-  )
+"""`
 
-  const sentences = result.sentences.map((s) => {
-    const claimType = normalizeClaimType(s.claimType, settings.sourceTier)
-    const existingCitation = mergeExistingCitation(s.existingCitation ?? null, s.text)
-    const normalized = {
+  let result: z.infer<typeof analyzeSchema>
+  try {
+    result = await completeStructured(
+      analyzeSchema,
+      [{ role: 'user', content: userContent }],
+      {
+        system: ANALYZE_ESSAY_SYSTEM,
+        temperature: 0.2,
+        maxTokens: 4500,
+      },
+    )
+  } catch {
+    // Second chance: plain completion + JSON salvage.
+    try {
+      const text = await complete([{ role: 'user', content: userContent }], {
+        system: ANALYZE_ESSAY_SYSTEM,
+        temperature: 0.1,
+        maxTokens: 4500,
+      })
+      const jsonMatch = text.match(/\{[\s\S]*\}/)
+      if (!jsonMatch) throw new Error('no json')
+      result = analyzeSchema.parse(JSON.parse(jsonMatch[0]))
+    } catch {
+      result = { medical: false, legal: false, reasoning: '', sentences: [] }
+    }
+  }
+
+  const inferred = inferSubjectFlags(essay)
+  const sentences: AnalyzedSentence[] = []
+  for (const s of result.sentences) {
+    const text = recoverSentenceText(essay, s)
+    if (!text) continue
+    const claimType = preferNewsClaimType(
+      normalizeClaimType(s.claimType, settings.sourceTier),
+      text,
+      settings.sourceTier,
+    )
+    const existingCitation = mergeExistingCitation(s.existingCitation ?? null, text)
+    const normalized: AnalyzedSentence = {
       ...s,
+      text,
       claimType,
       existingCitation: existingCitation ?? s.existingCitation ?? null,
     }
     const cq = claimQueryFromAnalyzed(normalized)
-    if (cq) seedClaimQuery(s.text, cq)
-    return normalized
-  })
+    if (cq) seedClaimQuery(text, cq)
+    sentences.push(normalized)
+  }
 
   // Persist claim queries in background (best-effort).
   void Promise.all(
@@ -195,8 +273,8 @@ ${essay}
 
   return {
     sentences,
-    medical: result.medical === true,
-    legal: result.legal === true,
+    medical: result.medical === true || inferred.medical,
+    legal: result.legal === true || inferred.legal,
     reasoning: (result.reasoning ?? '').trim(),
   }
 }

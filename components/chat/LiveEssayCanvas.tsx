@@ -68,11 +68,6 @@ export function LiveEssayCanvas({
                 ) : (
                   seg.text
                 )}
-                {seg.status === 'failed' ? (
-                  <span className="gt-miss" aria-label="Missed">
-                    · missed
-                  </span>
-                ) : null}
               </mark>
             )
           })}

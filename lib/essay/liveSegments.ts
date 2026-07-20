@@ -1,5 +1,6 @@
 import type { ReferencingStyleId } from '@/types'
 import { splitInTextCitation } from '@/lib/cite/insertInTextCitation'
+import { locateSentenceInEssay } from '@/lib/essay/alignSentences'
 
 export type LiveSentenceStatus = 'pending' | 'active' | 'done' | 'failed'
 
@@ -7,6 +8,8 @@ export interface LiveSentenceState {
   status: LiveSentenceStatus
   inText?: string
   sentence: string
+  /** Plain-English miss reason when status is failed. */
+  missReason?: string
 }
 
 export type LiveSegment =
@@ -35,24 +38,18 @@ export function buildLiveEssaySegments(
 
   type Hit = { start: number; end: number; index: number; text: string }
   const hits: Hit[] = []
-  const used = new Set<number>()
+  const usedStarts = new Set<number>()
 
   for (const s of sentences) {
-    const needle = s.text
-    if (!needle) continue
-    let from = 0
-    while (from < essay.length) {
-      const start = essay.indexOf(needle, from)
-      if (start === -1) break
-      const end = start + needle.length
-      const overlaps = hits.some((h) => !(end <= h.start || start >= h.end))
-      if (!overlaps && !used.has(start)) {
-        hits.push({ start, end, index: s.index, text: needle })
-        used.add(start)
-        break
-      }
-      from = start + 1
-    }
+    const located = locateSentenceInEssay(essay, s.text) ?? (essay.includes(s.text) ? s.text : null)
+    if (!located) continue
+    const start = essay.indexOf(located)
+    if (start === -1) continue
+    const end = start + located.length
+    const overlaps = hits.some((h) => !(end <= h.start || start >= h.end))
+    if (overlaps || usedStarts.has(start)) continue
+    hits.push({ start, end, index: s.index, text: located })
+    usedStarts.add(start)
   }
 
   hits.sort((a, b) => a.start - b.start)

@@ -14,6 +14,28 @@ export interface ExaSearchResult {
 
 const SEARCH_TIMEOUT_MS = 10000
 
+/** OpenAlex semantic search is rate-limited to ~1 req/sec; serialize callers. */
+let semanticChain: Promise<void> = Promise.resolve()
+let lastSemanticAt = 0
+
+async function withSemanticSlot<T>(fn: () => Promise<T>): Promise<T> {
+  let release!: () => void
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const prev = semanticChain
+  semanticChain = prev.then(() => gate)
+  await prev
+  const wait = Math.max(0, 1100 - (Date.now() - lastSemanticAt))
+  if (wait) await new Promise((r) => setTimeout(r, wait))
+  try {
+    lastSemanticAt = Date.now()
+    return await fn()
+  } finally {
+    release()
+  }
+}
+
 async function exaFetch<T>(path: string, body: Record<string, unknown>): Promise<T | null> {
   const apiKey = process.env.EXA_API_KEY
   if (!apiKey) return null
@@ -74,9 +96,16 @@ export async function searchAcademicWorks(
   const mailto = process.env.OPENALEX_MAILTO ?? CONTACT_EMAIL
   const apiKey = process.env.OPENALEX_API_KEY?.trim()
   const mode = options?.mode ?? 'keyword'
+  // Semantic is a paid/beta endpoint — skip entirely without a key (avoids noisy 400s).
+  if (mode === 'semantic' && !apiKey) return []
+
   const filters: string[] = ['is_retracted:false']
 
-  if (options?.sourceTier === 'academic' || options?.preferPeerReviewed) {
+  // Keep semantic filters minimal; heavy type ORs are a common 400 source.
+  if (
+    mode === 'keyword' &&
+    (options?.sourceTier === 'academic' || options?.preferPeerReviewed)
+  ) {
     filters.push('type:article|review|book-chapter|book')
   }
 
@@ -88,8 +117,22 @@ export async function searchAcademicWorks(
   }
 
   const cappedQuery =
-    mode === 'semantic' ? query.trim().slice(0, 2000) : query.trim()
-  if (!cappedQuery) return []
+    mode === 'semantic'
+      ? // Docs: semantic prefers paragraph-ish text (up to 2k); short keyword bags often 400.
+        query.replace(/\s+/g, ' ').trim().slice(0, 400)
+      : query
+          .replace(/\?/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim()
+          .slice(0, 180)
+  if (!cappedQuery || cappedQuery.length < 3) return []
+  if (
+    mode === 'semantic' &&
+    (/^(what|how|why|when|where|which|does|do|is|are)\b/i.test(cappedQuery) ||
+      cappedQuery.split(/\s+/).length > 60)
+  ) {
+    return []
+  }
 
   const params = new URLSearchParams({
     per_page: String(Math.min(perPage, mode === 'semantic' ? 50 : 100)),
@@ -98,17 +141,17 @@ export async function searchAcademicWorks(
     select:
       'id,doi,title,display_name,publication_year,publication_date,cited_by_count,fwci,type,abstract_inverted_index,authorships,primary_location,open_access,topics,biblio',
   })
+  if (apiKey) params.set('api_key', apiKey)
 
   if (mode === 'semantic') {
     params.set('search.semantic', cappedQuery)
-    if (apiKey) params.set('api_key', apiKey)
   } else {
     params.set('search', cappedQuery)
     params.set('sort', 'relevance_score:desc')
   }
 
   const url = `https://api.openalex.org/works?${params.toString()}`
-  try {
+  const attempt = async (): Promise<OpenAlexWork[]> => {
     const res = await fetch(url, {
       headers: {
         Accept: 'application/json',
@@ -117,21 +160,40 @@ export async function searchAcademicWorks(
       signal: AbortSignal.timeout(SEARCH_TIMEOUT_MS),
     })
     if (!res.ok) {
-      console.warn(
-        '[openalex]',
-        mode,
-        'search failed',
-        res.status,
-        cappedQuery.slice(0, 80),
-      )
-      return []
+      const err = new Error(`openalex-${res.status}`)
+      ;(err as Error & { status?: number }).status = res.status
+      throw err
     }
     const data = (await res.json()) as { results?: OpenAlexWork[] }
     return data.results ?? []
-  } catch (err) {
-    console.warn('[openalex] request error', err instanceof Error ? err.message : err)
-    return []
   }
+
+  const run = async (): Promise<OpenAlexWork[]> => {
+    try {
+      return await attempt()
+    } catch (err) {
+      const status = (err as { status?: number })?.status
+      // Retry once on gateway timeouts / 5xx.
+      if (status === 504 || status === 502 || status === 503 || !status) {
+        try {
+          await new Promise((r) => setTimeout(r, 400))
+          return await attempt()
+        } catch (retryErr) {
+          console.warn(
+            '[openalex] request error',
+            retryErr instanceof Error ? retryErr.message : retryErr,
+          )
+          return []
+        }
+      }
+      // Semantic 400s are common on beta; fall back silently to keyword path.
+      if (mode === 'semantic' && status === 400) return []
+      console.warn('[openalex]', mode, 'search failed', status ?? '', cappedQuery.slice(0, 80))
+      return []
+    }
+  }
+
+  return mode === 'semantic' ? withSemanticSlot(run) : run()
 }
 
 function openAlexToSearchResult(work: OpenAlexWork): SourceSearchResult {

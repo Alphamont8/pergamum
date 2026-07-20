@@ -15,6 +15,7 @@ import {
 } from '@/lib/billing/proTrial.shared'
 import { CITES_PACKS, type CitesPack } from '@/lib/cites/packs'
 import type { BillingInterval, PlanTier, SubscriptionStatus } from '@/types'
+import { formatAppDate, formatAppDateTime } from '@/lib/format/date'
 import './cites.css'
 
 interface LedgerRow {
@@ -90,11 +91,7 @@ function ledgerExpiry(
 
 function formatShortDate(iso: string | null | undefined) {
   if (!iso) return null
-  return new Date(iso).toLocaleDateString([], {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  })
+  return formatAppDate(iso)
 }
 
 function daysUntil(iso: string | null | undefined) {
@@ -407,13 +404,7 @@ export function CitesPageClient({
         row.kind === 'spend' ? generationIdFromLedgerReference(row.reference_id) : null
       const href =
         generationId && libraryGenerationIds.has(generationId) ? `/c/${generationId}` : null
-      const when = new Date(row.created_at).toLocaleString([], {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-        hour: 'numeric',
-        minute: '2-digit',
-      })
+      const when = formatAppDateTime(row.created_at)
       return (
         <div key={row.id} className="ledger-table__row" role="row">
           <span className="ledger-table__date" role="cell">

@@ -4,6 +4,7 @@ import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { analyzeEssayForCitations } from '@/lib/cite/analyze'
 import { finalizeNoCitationGeneration } from '@/lib/cite/finalizeNoCitations'
 import { ensureGenerationTitle, generateEssayTitle, needsGeneratedTitle } from '@/lib/essay/title'
+import { alignSentencesToEssay } from '@/lib/essay/alignSentences'
 import { isLlmConfigured } from '@/lib/ai/provider'
 import { getUserCitesBalance } from '@/lib/cites/ledger'
 import {
@@ -24,6 +25,7 @@ const bodySchema = z.object({
     suggestCorrections: z.boolean(),
     recency: z.enum(['any', '10y', '5y']),
     sourceTier: z.enum(['any', 'academic']),
+    sourceLinks: z.string().max(8_000).optional(),
   }),
 })
 
@@ -100,8 +102,11 @@ export async function POST(request: Request) {
 
   const reuseQuoted = matching.find((row) => row.status === 'quoted' && row.sentences)
   if (reuseQuoted?.sentences) {
-    const sentences = reuseQuoted.sentences as Array<{ index: number; text: string; reason?: string }>
-    const citesRequired = Number(reuseQuoted.cites_required ?? sentences.length)
+    const sentences = alignSentencesToEssay(
+      essay,
+      reuseQuoted.sentences as Array<{ index: number; text: string; reason?: string }>,
+    )
+    const citesRequired = sentences.length
     const progress =
       reuseQuoted.progress && typeof reuseQuoted.progress === 'object'
         ? (reuseQuoted.progress as { reasoning?: string })
@@ -122,6 +127,11 @@ export async function POST(request: Request) {
         },
         { reasoning: progress?.reasoning },
       )
+    } else if (citesRequired !== Number(reuseQuoted.cites_required ?? 0)) {
+      await service
+        .from('generations')
+        .update({ sentences, cites_required: citesRequired })
+        .eq('id', reuseQuoted.id)
     }
     return NextResponse.json({
       generationId: reuseQuoted.id,
@@ -225,7 +235,8 @@ export async function POST(request: Request) {
         ? generateEssayTitle(essay)
         : Promise.resolve(generation.title as string),
     ])
-    const { sentences, medical, legal, reasoning } = analysis
+    const { sentences: rawSentences, medical, legal, reasoning } = analysis
+    const sentences = alignSentencesToEssay(essay, rawSentences)
     const citesRequired = sentences.length
 
     if (citesRequired === 0) {

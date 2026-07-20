@@ -19,6 +19,7 @@ import {
 } from '@/lib/essay/draftExport'
 import { applyInTextCitations } from '@/lib/cite/applyInTextCitations'
 import { dispatchLibrarySync, formatDraftMeta, countSuccessfulCitations } from '@/lib/library/sync'
+import { labelForStyle, normalizeReferencingStyleId } from '@/utils/referencingStyle'
 import '@/components/chat/chat.css'
 
 interface GenerationRow {
@@ -107,12 +108,16 @@ export function GenerationView({ generation }: { generation: GenerationRow }) {
     return result?.essay || original
   }, [generation.essay_input, generation.settings?.styleId, result])
 
-  const formattedDraft = formatEssayForDisplay(draftText)
+  const displayDraft = useMemo(() => formatEssayForDisplay(draftText), [draftText])
+
   const bibliography = result?.bibliography ?? []
   const hasCitations = Boolean(result?.essay || (result?.citations?.length ?? 0) > 0)
 
   const citationsDone = countSuccessfulCitations(result?.citations)
-  const meta = formatDraftMeta(generation.created_at, citationsDone)
+  const styleLabel = generation.settings?.styleId
+    ? labelForStyle(normalizeReferencingStyleId(generation.settings.styleId))
+    : null
+  const meta = formatDraftMeta(generation.created_at, citationsDone, styleLabel)
 
   const copyText = useCallback(async (kind: 'draft' | 'bibliography', text: string) => {
     await navigator.clipboard.writeText(text)
@@ -199,7 +204,7 @@ export function GenerationView({ generation }: { generation: GenerationRow }) {
     }
     const payload = {
       title,
-      essay: formattedDraft,
+      essay: displayDraft,
       bibliography,
     }
     setExportBusy(true)
@@ -338,12 +343,12 @@ export function GenerationView({ generation }: { generation: GenerationRow }) {
               <CopyLabelButton
                 label="Copy Draft"
                 copied={copied === 'draft'}
-                onClick={() => void copyText('draft', formattedDraft)}
+                onClick={() => void copyText('draft', displayDraft)}
               />
             ) : null}
           </div>
           <pre className={`essay-output ${hasCitations ? '' : 'essay-output--muted'}`}>
-            {formattedDraft}
+            {displayDraft}
           </pre>
         </section>
 

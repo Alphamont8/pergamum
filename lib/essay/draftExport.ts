@@ -18,6 +18,7 @@ import {
   downloadText,
   type ExportBibliographyOptions,
 } from '@/lib/citations/export'
+import { formatEssayParagraphs } from '@/lib/essay/format'
 
 /** Brand tokens mirrored for print / Word (keep in sync with styles/tokens.css light theme). */
 const BRAND = {
@@ -45,13 +46,6 @@ function slugify(title: string): string {
       .replace(/^-|-$/g, '')
       .slice(0, 48) || 'draft'
   )
-}
-
-function essayParagraphs(essay: string): string[] {
-  return essay
-    .split(/\n\s*\n/)
-    .map((block) => block.replace(/\n+/g, ' ').trim())
-    .filter(Boolean)
 }
 
 function bibliographyEntriesFromStrings(lines: string[]): BibliographyEntry[] {
@@ -130,7 +124,7 @@ export async function exportDraftDocx(payload: DraftExportPayload): Promise<void
     accentRule(),
   ]
 
-  for (const text of essayParagraphs(payload.essay)) {
+  for (const text of formatEssayParagraphs(payload.essay)) {
     children.push(
       new Paragraph({
         spacing: { after: 240, line: 360 },
@@ -247,7 +241,7 @@ export async function exportDraftDocx(payload: DraftExportPayload): Promise<void
 
 /** Opens a print-ready window so the user can Save as PDF. */
 export function exportDraftPdf(payload: DraftExportPayload): void {
-  const paragraphs = essayParagraphs(payload.essay)
+  const paragraphs = formatEssayParagraphs(payload.essay)
     .map((p) => `<p class="body">${escapeHtml(p)}</p>`)
     .join('\n')
 
@@ -330,6 +324,7 @@ export function exportDraftPdf(payload: DraftExportPayload): void {
       color: var(--ink);
       text-align: justify;
       hyphens: auto;
+      white-space: pre-wrap;
     }
 
     .body:last-of-type {

@@ -7,6 +7,16 @@ export type CitationJob = {
   result: SentenceCitationResult
 }
 
+function sourceIdentityKey(record: SourceRecord): string {
+  const doi = record.doi?.replace(/^https?:\/\/(?:dx\.)?doi\.org\//i, '').trim().toLowerCase()
+  if (doi) return `doi:${doi}`
+  if (record.openAlexId) return `oa:${record.openAlexId}`
+  const title = (record.title ?? '').trim().toLowerCase().replace(/\s+/g, ' ')
+  const year = (record.year ?? '').slice(0, 4)
+  if (title) return `title:${title}|${year}`
+  return `id:${record.id}`
+}
+
 /** Format bibliography + in-text strings in sentence order (fixes repeat-source numbering). */
 export async function formatCitationJobsInDocumentOrder(
   jobs: CitationJob[],
@@ -20,14 +30,24 @@ export async function formatCitationJobsInDocumentOrder(
   const orderedJobs = [...jobs].sort((a, b) => a.sentence.index - b.sentence.index)
   const orderedUniqueIds: string[] = []
   const uniqueSources: SourceRecord[] = []
+  const seenIdentity = new Map<string, string>()
 
   for (const job of orderedJobs) {
     if (job.result.status !== 'done' || !job.result.record) continue
-    const id = job.result.record.id
-    if (!orderedUniqueIds.includes(id)) {
-      orderedUniqueIds.push(id)
-      uniqueSources.push(job.result.record)
+    const record = job.result.record
+    const identity = sourceIdentityKey(record)
+    const existingId = seenIdentity.get(identity)
+    if (existingId) {
+      // Point the job at the first canonical record id for consistent numbering.
+      job.result.record = {
+        ...record,
+        id: existingId,
+      }
+      continue
     }
+    seenIdentity.set(identity, record.id)
+    orderedUniqueIds.push(record.id)
+    uniqueSources.push(record)
   }
 
   const bibMap = await formatBibliographyBatch(uniqueSources, styleId, orderedUniqueIds)

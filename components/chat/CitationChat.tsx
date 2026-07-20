@@ -5,7 +5,6 @@ import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/Button'
 import { REFERENCING_STYLES, labelForStyle } from '@/utils/referencingStyle'
-import { formatBibliographyForCopy, formatEssayForDisplay } from '@/lib/essay/format'
 import type { LiveSentenceState } from '@/lib/essay/liveSegments'
 import type { CitationPipelineStage } from '@/lib/cite/stages'
 import { BASIC_MAX_WORDS } from '@/lib/billing/plans'
@@ -22,9 +21,20 @@ import {
   settingsMatchDefaults,
 } from '@/lib/composer/draft'
 import type { GenerationSettings, SourceRecency, SourceTier } from '@/types'
-import { GenerationTheater } from './GenerationTheater'
+import { AgentTimeline, type TimelineReasoning, type TimelineStep } from './AgentTimeline'
+import { LiveEssayCanvas } from './LiveEssayCanvas'
 import type { ActivityLogEntry, BibChip, PossibleMatchChip } from './PipelineActivityRail'
+import { alignSentencesToEssay, countWords } from '@/lib/essay/alignSentences'
+import { formatAnalysisReasoning } from '@/lib/format/agentReasoning'
+import {
+  analyzeStepCopy,
+  feedDoneCopy,
+  searchStepCopy,
+} from '@/lib/format/feedCopy'
+import { formatEssayForDisplay } from '@/lib/essay/format'
 import './chat.css'
+import './agent-timeline.css'
+import './generation-theater.css'
 
 interface AnalyzedSentence {
   index: number
@@ -140,6 +150,9 @@ function PrefToggle({
   )
 }
 
+const COMPOSER_DRAFT_MIN_H = 151
+const COMPOSER_DRAFT_MAX_H = 227
+
 export function CitationChat() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -179,7 +192,9 @@ export function CitationChat() {
     [draftDefaults, suggestionsAvailable],
   )
   const [essay, setEssay] = useState('')
+  const [sourceLinks, setSourceLinks] = useState('')
   const [settings, setSettings] = useState<GenerationSettings>(makeDefaultSettings)
+  const [pickingMatch, setPickingMatch] = useState<number | null>(null)
   const [phase, setPhase] = useState<Phase>('idle')
   const [statusMessage, setStatusMessage] = useState('')
   const [progress, setProgress] = useState({ current: 0, total: 0 })
@@ -207,12 +222,16 @@ export function CitationChat() {
   )
   const [theaterStartedAt, setTheaterStartedAt] = useState(() => Date.now())
   const [analysisReasoning, setAnalysisReasoning] = useState<string | null>(null)
-  const [reasoningOpen, setReasoningOpen] = useState(false)
+  const [analyzeDurationSec, setAnalyzeDurationSec] = useState<number | null>(null)
+  const analyzeStartedAtRef = useRef<number | null>(null)
+  const [liveClockMs, setLiveClockMs] = useState<number | null>(null)
   const [analysisStatus, setAnalysisStatus] = useState('')
   const [draftTitle, setDraftTitle] = useState<string | null>(null)
   const logSeqRef = useRef(0)
   const streamRef = useRef<HTMLDivElement>(null)
+  const composerRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const sourceLinksRef = useRef<HTMLTextAreaElement>(null)
   const prefsRef = useRef<HTMLDivElement>(null)
   const styleSlotRef = useRef<HTMLDivElement>(null)
   const styleChipRef = useRef<HTMLButtonElement>(null)
@@ -239,6 +258,7 @@ export function CitationChat() {
   const resetComposer = useCallback(() => {
     clearComposerDraft(userId)
     setEssay('')
+    setSourceLinks('')
     setSettings(makeDefaultSettings())
     setPhase('idle')
     setStatusMessage('')
@@ -262,7 +282,7 @@ export function CitationChat() {
     setLiveBibliography([])
     setPossibleMatches({})
     setAnalysisReasoning(null)
-    setReasoningOpen(false)
+    setAnalyzeDurationSec(null)
     setAnalysisStatus('')
     setDraftTitle(null)
     lastAnalyzeKeyRef.current = null
@@ -298,14 +318,38 @@ export function CitationChat() {
   }, [phase, liveCitations.length, statusMessage, result, sentences.length])
 
   useEffect(() => {
+    if (phase !== 'analyzing' && phase !== 'generating') {
+      setLiveClockMs(null)
+      return
+    }
+    setLiveClockMs(Date.now())
+    const id = window.setInterval(() => setLiveClockMs(Date.now()), 50)
+    return () => window.clearInterval(id)
+  }, [phase])
+
+  useEffect(() => {
     const el = textareaRef.current
+    const composer = composerRef.current
     if (!el) return
-    el.style.height = 'auto'
-    const minHeight = 151
-    const maxHeight = 227
-    const next = Math.min(Math.max(el.scrollHeight, minHeight), maxHeight)
-    el.style.height = `${next}px`
-    el.style.overflowY = el.scrollHeight > maxHeight ? 'auto' : 'hidden'
+
+    const syncDraftHeight = () => {
+      const styles = getComputedStyle(el)
+      const minHeight = parseFloat(styles.minHeight) || COMPOSER_DRAFT_MIN_H
+      const maxHeight = parseFloat(styles.maxHeight) || COMPOSER_DRAFT_MAX_H
+      el.style.height = 'auto'
+      const next = Math.min(Math.max(el.scrollHeight, minHeight), maxHeight)
+      el.style.height = `${next}px`
+      el.style.overflowY = el.scrollHeight > maxHeight ? 'auto' : 'hidden'
+      const linksHeight = Math.round(next * 0.6)
+      composer?.style.setProperty('--composer-draft-h', `${next}px`)
+      composer?.style.setProperty('--composer-links-h', `${linksHeight}px`)
+      const linksEl = sourceLinksRef.current
+      if (linksEl) linksEl.style.height = `${linksHeight}px`
+    }
+
+    syncDraftHeight()
+    window.addEventListener('resize', syncDraftHeight)
+    return () => window.removeEventListener('resize', syncDraftHeight)
   }, [essay, phase])
 
   useEffect(() => {
@@ -323,6 +367,7 @@ export function CitationChat() {
     const draft = loadComposerDraft(userId)
     if (draft) {
       setEssay(draft.essay)
+      setSourceLinks(typeof draft.sourceLinks === 'string' ? draft.sourceLinks : '')
       setSettings({
         ...draft.settings,
         suggestCorrections: suggestionsAvailable && draft.settings.suggestCorrections,
@@ -434,12 +479,12 @@ export function CitationChat() {
 
   useEffect(() => {
     if (!userId || !draftHydratedRef.current || phase !== 'idle') return
-    if (!essay.trim() && settingsMatchDefaults(settings, draftDefaults, suggestionsAvailable)) {
+    if (!essay.trim() && !sourceLinks.trim() && settingsMatchDefaults(settings, draftDefaults, suggestionsAvailable)) {
       clearComposerDraft(userId)
       return
     }
-    saveComposerDraft(userId, { essay, settings })
-  }, [draftDefaults, essay, phase, settings, suggestionsAvailable, userId])
+    saveComposerDraft(userId, { essay, settings, sourceLinks })
+  }, [draftDefaults, essay, phase, settings, sourceLinks, suggestionsAvailable, userId])
 
   useEffect(() => {
     const onClear = () => resetComposer()
@@ -518,7 +563,9 @@ export function CitationChat() {
     setResult(null)
     setLiveCitations([])
     setAnalysisReasoning(null)
-    setReasoningOpen(true)
+    setAnalyzeDurationSec(null)
+    analyzeStartedAtRef.current = Date.now()
+    logSeqRef.current = 0
     setTheaterLive({})
     setActiveIndexes([])
     setSentenceStages({})
@@ -527,11 +574,55 @@ export function CitationChat() {
     setPossibleMatches({})
     setStatusMessage('Analyzing your draft for claims that need a source…')
     setAnalysisStatus('Analyzing your draft for claims that need a source…')
+
+    const pushAnalyzeLog = (message: string, detail: string) => {
+      logSeqRef.current += 1
+      const entry: ActivityLogEntry = {
+        id: `${logSeqRef.current}-${Date.now()}`,
+        message,
+        detail,
+        stage: 'analyze',
+        at: Date.now(),
+      }
+      setActivityLog((prev) => [...prev, entry].slice(-120))
+    }
+
+    const readStep = analyzeStepCopy('read')
+    pushAnalyzeLog(readStep.message, readStep.detail)
+
+    const progressTimers: number[] = []
+    progressTimers.push(
+      window.setTimeout(() => {
+        const claimsStep = analyzeStepCopy('claims')
+        pushAnalyzeLog(claimsStep.message, claimsStep.detail)
+      }, 1800),
+    )
+    if (sourceLinks.trim()) {
+      progressTimers.push(
+        window.setTimeout(() => {
+          const linksStep = analyzeStepCopy('links')
+          pushAnalyzeLog(linksStep.message, linksStep.detail)
+        }, 3200),
+      )
+    }
+    progressTimers.push(
+      window.setTimeout(() => {
+        const queriesStep = analyzeStepCopy('queries')
+        pushAnalyzeLog(queriesStep.message, queriesStep.detail)
+      }, sourceLinks.trim() ? 4800 : 3600),
+    )
+
     try {
       const res = await fetch('/api/cite/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ essay, settings }),
+        body: JSON.stringify({
+          essay,
+          settings: {
+            ...settings,
+            sourceLinks: sourceLinks.trim() || undefined,
+          },
+        }),
       })
       if (res.status === 401) {
         router.replace(`/login?redirect=${encodeURIComponent('/')}&error=session`)
@@ -548,10 +639,14 @@ export function CitationChat() {
         throw new Error(data.error ?? 'We couldn\u2019t analyze your draft.')
       }
       setGenerationId(data.generationId)
-      setSentences(data.sentences)
-      setCitesRequired(data.citesRequired)
+      const loadedSentences = alignSentencesToEssay(
+        essay,
+        Array.isArray(data.sentences) ? (data.sentences as AnalyzedSentence[]) : [],
+      )
+      setSentences(loadedSentences)
+      setCitesRequired(loadedSentences.length)
       setBalance(data.balance)
-      setEnough(data.enough)
+      setEnough(typeof data.balance === 'number' ? data.balance >= loadedSentences.length : data.enough)
       if (typeof data.title === 'string' && data.title.trim()) {
         setDraftTitle(data.title.trim())
         if (data.generationId) {
@@ -562,35 +657,46 @@ export function CitationChat() {
           })
         }
       }
+      const initialLive: Record<number, LiveSentenceState> = {}
+      for (const s of loadedSentences) {
+        initialLive[s.index] = { status: 'pending', sentence: s.text }
+      }
+      setTheaterLive(initialLive)
       const reasoning =
         typeof data.reasoning === 'string' && data.reasoning.trim()
-          ? data.reasoning.trim()
-          : Array.isArray(data.sentences)
-            ? (data.sentences as AnalyzedSentence[])
-                .map((s) => s.reason?.trim())
-                .filter(Boolean)
-                .join('\n\n')
-            : ''
-      setAnalysisReasoning(reasoning || null)
-      setReasoningOpen(Boolean(reasoning))
+          ? formatAnalysisReasoning(data.reasoning.trim())
+          : null
+      setAnalysisReasoning(reasoning)
+      if (analyzeStartedAtRef.current) {
+        setAnalyzeDurationSec(
+          Math.max(1, Math.round((Date.now() - analyzeStartedAtRef.current) / 1000)),
+        )
+      }
       lastAnalyzeKeyRef.current = cacheKey
       setPhase('quoted')
+      const resultStep = analyzeStepCopy('result', {
+        count: loadedSentences.length,
+        reasoning,
+      })
+      pushAnalyzeLog(resultStep.message, resultStep.detail)
       setStatusMessage(
-        data.citesRequired === 0
+        loadedSentences.length === 0
           ? 'Nothing here needs a citation. Your draft looks good to go.'
-          : `Found ${data.citesRequired} sentence${data.citesRequired === 1 ? '' : 's'} that need a source · ${data.citesRequired} Cites required`,
+          : `Found ${loadedSentences.length} sentence${loadedSentences.length === 1 ? '' : 's'} that need a source · ${loadedSentences.length} Cites required`,
       )
       setAnalysisStatus(
-        data.citesRequired === 0
+        loadedSentences.length === 0
           ? 'Nothing here needs a citation. Your draft looks good to go.'
-          : `Found ${data.citesRequired} sentence${data.citesRequired === 1 ? '' : 's'} that need a source · ${data.citesRequired} Cites required`,
+          : `Found ${loadedSentences.length} sentence${loadedSentences.length === 1 ? '' : 's'} that need a source · ${loadedSentences.length} Cites required`,
       )
-      if (data.citesRequired === 0) {
+      if (loadedSentences.length === 0) {
         dispatchLibrarySync({ action: 'refresh' })
       }
     } catch (err) {
       setPhase('error')
       setError(err instanceof Error ? err.message : 'We couldn\u2019t analyze your draft.')
+    } finally {
+      for (const id of progressTimers) window.clearTimeout(id)
     }
   }, [
     analyzeCacheKey,
@@ -601,6 +707,7 @@ export function CitationChat() {
     router,
     sentences.length,
     settings,
+    sourceLinks,
     userId,
   ])
 
@@ -631,10 +738,9 @@ export function CitationChat() {
     setTheaterStartedAt(Date.now())
     setActiveIndexes([])
     setSentenceStages({})
-    setActivityLog([])
     setLiveBibliography([])
     setPossibleMatches({})
-    logSeqRef.current = 0
+    // Keep prior analyze steps in the feed; continue the timeline into generation.
 
     const initialLive: Record<number, LiveSentenceState> = {}
     for (const s of sentences) {
@@ -642,22 +748,41 @@ export function CitationChat() {
     }
     setTheaterLive(initialLive)
 
-    const pushLog = (message: string, stage: ActivityLogEntry['stage'], sentenceIndex?: number) => {
+    const totalSentences = citesRequired || sentences.length
+
+    const pushLog = (
+      message: string,
+      detail: string,
+      stage: ActivityLogEntry['stage'],
+      sentenceIndex?: number,
+      options?: { replaceLast?: boolean },
+    ) => {
       logSeqRef.current += 1
       const entry: ActivityLogEntry = {
         id: `${logSeqRef.current}-${Date.now()}`,
         message,
+        detail,
         stage,
         sentenceIndex,
         at: Date.now(),
       }
-      setActivityLog((prev) => [entry, ...prev].slice(0, 40))
+      setActivityLog((prev) => {
+        if (options?.replaceLast && sentenceIndex != null && prev.length > 0) {
+          const last = prev[prev.length - 1]
+          if (
+            last.sentenceIndex === sentenceIndex &&
+            last.stage !== 'found' &&
+            last.stage !== 'miss'
+          ) {
+            return [...prev.slice(0, -1), { ...entry, id: last.id }].slice(-120)
+          }
+        }
+        return [...prev, entry].slice(-120)
+      })
     }
 
-    pushLog(
-      `Working through ${sentences.length} sentence${sentences.length === 1 ? '' : 's'} at once…`,
-      'searching',
-    )
+    const startStep = searchStepCopy('searching', 1, totalSentences)
+    pushLog(startStep.message, startStep.detail, 'searching')
 
     try {
       const res = await fetch('/api/cite/generate', {
@@ -698,9 +823,6 @@ export function CitationChat() {
             if (typeof data.current === 'number' && typeof data.total === 'number') {
               setProgress({ current: data.current, total: data.total })
             }
-            if (typeof data.message === 'string') {
-              pushLog(data.message, 'searching')
-            }
           }
 
           if (event === 'progress') {
@@ -710,10 +832,14 @@ export function CitationChat() {
             const step = (PIPELINE_STAGES.has(stepRaw) ? stepRaw : 'searching') as
               | CitationPipelineStage
               | 'searching'
-            const message =
-              typeof data.message === 'string' ? data.message : 'Working on your draft…'
+            const progressTotal =
+              typeof data.total === 'number' && data.total > 0 ? data.total : totalSentences
+            const copy =
+              sentenceIndex != null
+                ? searchStepCopy(step, sentenceIndex + 1, progressTotal)
+                : searchStepCopy('searching', 1, progressTotal)
 
-            setStatusMessage(message)
+            setStatusMessage(copy.message)
             if (typeof data.current === 'number' && typeof data.total === 'number') {
               setProgress((p) => ({
                 current: data.current as number,
@@ -737,7 +863,7 @@ export function CitationChat() {
             }
 
             if (step !== 'found' && step !== 'miss') {
-              pushLog(message, step, sentenceIndex)
+              pushLog(copy.message, copy.detail, step, sentenceIndex, { replaceLast: true })
             }
           }
 
@@ -783,6 +909,10 @@ export function CitationChat() {
                 status,
                 sentence: String(data.sentence ?? prev[sentenceIndex]?.sentence ?? ''),
                 inText: status === 'done' ? inText : undefined,
+                missReason:
+                  status === 'failed' && typeof data.errorMessage === 'string'
+                    ? data.errorMessage
+                    : undefined,
               },
             }))
             if (status === 'failed' && Array.isArray(data.possibleMatches)) {
@@ -801,10 +931,21 @@ export function CitationChat() {
                   typeof data.bibliography === 'string' ? data.bibliography : undefined,
               },
             ])
+            const citeCopy = searchStepCopy(
+              status === 'done' ? 'found' : 'miss',
+              sentenceIndex + 1,
+              totalSentences,
+              {
+                sourceTitle: status === 'done' ? title : undefined,
+                missReason:
+                  status === 'failed' && typeof data.errorMessage === 'string'
+                    ? data.errorMessage
+                    : undefined,
+              },
+            )
             pushLog(
-              status === 'done'
-                ? `Cited sentence ${sentenceIndex + 1} · ${title}`
-                : `Missed sentence ${sentenceIndex + 1}.`,
+              citeCopy.message,
+              citeCopy.detail,
               status === 'done' ? 'found' : 'miss',
               sentenceIndex,
             )
@@ -862,8 +1003,8 @@ export function CitationChat() {
     void generate()
   }, [generate, generationId, phase, sentences.length])
 
-  const displayEssay = useMemo(() => {
-    if (!result) return ''
+  const citedDraftText = useMemo(() => {
+    if (!result?.essay) return ''
     let text = result.essay
     for (const c of result.citations) {
       if (!c.correction || !acceptedCorrections[c.index]) continue
@@ -871,7 +1012,7 @@ export function CitationChat() {
         text = text.replace(c.sentence, c.correction)
       }
     }
-    return text
+    return formatEssayForDisplay(text)
   }, [result, acceptedCorrections])
 
   const copyText = useCallback(async (kind: 'essay' | 'bibliography', text: string) => {
@@ -895,14 +1036,122 @@ export function CitationChat() {
 
   const correctionCount = result?.citations.filter((c) => c.correction).length ?? 0
 
-  const showTheater =
-    phase === 'generating' ||
-    phase === 'theater_done' ||
-    (phase === 'error' && Object.keys(theaterLive).length > 0)
   const showWorkspace = phase !== 'idle'
   const showComposer = phase === 'idle'
 
   const theaterEssay = result?.originalEssay || essay
+
+  const focusIndex =
+    activeIndexes[0] ??
+    (progress.current > 0
+      ? sentences.find((s) => theaterLive[s.index]?.status === 'done' || theaterLive[s.index]?.status === 'failed')
+          ?.index ?? null
+      : sentences[0]?.index ?? null)
+
+  const resolvedDraftTitle = useMemo(() => {
+    const t = draftTitle?.trim()
+    if (t && t !== 'Untitled draft' && t !== 'Untitled') return t
+    if (phase === 'analyzing') return 'Analyzing Draft…'
+    return 'New Draft'
+  }, [draftTitle, phase])
+
+  const pickMatch = useCallback(
+    async (sentenceIndex: number, matchIndex: number) => {
+      if (!generationId) return
+      const match = possibleMatches[sentenceIndex]?.[matchIndex]
+      if (!match) return
+      setPickingMatch(sentenceIndex)
+      try {
+        const res = await fetch('/api/cite/accept-match', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ generationId, sentenceIndex, match }),
+        })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) {
+          throw new Error(
+            typeof data.error === 'string' ? data.error : "We couldn't apply that source.",
+          )
+        }
+        const citation = data.citation as {
+          index: number
+          sentence: string
+          status: string
+          inText?: string
+          title?: string
+        }
+        setTheaterLive((prev) => ({
+          ...prev,
+          [sentenceIndex]: {
+            status: 'done',
+            sentence: citation.sentence || prev[sentenceIndex]?.sentence || '',
+            inText: citation.inText,
+          },
+        }))
+        setPossibleMatches((prev) => {
+          const next = { ...prev }
+          delete next[sentenceIndex]
+          return next
+        })
+        if (data.result) setResult(data.result as ResultPayload)
+        setPhase('theater_done')
+        dispatchLibrarySync({ action: 'refresh' })
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "We couldn't apply that source.")
+      } finally {
+        setPickingMatch(null)
+      }
+    },
+    [generationId, possibleMatches],
+  )
+
+  const timelineReasoning = useMemo((): TimelineReasoning | null => {
+    if (phase === 'analyzing') {
+      const started = analyzeStartedAtRef.current
+      const elapsedMs = started && liveClockMs ? Math.max(0, liveClockMs - started) : 0
+      const secs = Math.floor(elapsedMs / 1000)
+      return { label: `Analyzing draft · ${secs}s`, busy: true }
+    }
+    if (analyzeDurationSec != null) {
+      return { label: `Analyzed draft for ${analyzeDurationSec}s` }
+    }
+    return null
+  }, [analyzeDurationSec, liveClockMs, phase])
+
+  const timelineSteps = useMemo((): TimelineStep[] => {
+    const steps: TimelineStep[] = activityLog.map((log, i) => ({
+      id: log.id,
+      message: log.message,
+      detail: log.detail,
+      stage: log.stage,
+      sentenceIndex: log.sentenceIndex,
+      at: log.at,
+      busy: phase === 'analyzing' || phase === 'generating' ? i === activityLog.length - 1 : false,
+    }))
+
+    if (phase === 'theater_done' && !steps.some((s) => s.message === feedDoneCopy().message)) {
+      const done = feedDoneCopy()
+      steps.push({
+        id: 'done-result',
+        message: done.message,
+        detail: done.detail,
+        stage: 'found',
+        at: Date.now(),
+      })
+    }
+
+    if (phase === 'error' && error) {
+      steps.push({
+        id: 'error-status',
+        message: "We couldn't finish.",
+        detail: error,
+        stage: 'miss',
+        at: Date.now(),
+      })
+    }
+
+    return steps
+  }, [activityLog, error, phase])
 
   const onViewDraft = useCallback(() => {
     if (!generationId) return
@@ -1014,13 +1263,11 @@ export function CitationChat() {
     [generationId, isPro, sentences, theaterLive],
   )
 
-  const analysisStatusLabel =
-    phase === 'analyzing'
-      ? analysisStatus || 'Analyzing your draft…'
-      : analysisStatus || statusMessage || 'Analysis ready'
 
   return (
-    <div className={`chat-page ${showWorkspace ? 'chat-page--workspace' : ''}`.trim()}>
+    <div
+      className={`chat-page ${showWorkspace ? 'chat-page--workspace' : ''} ${showComposer ? 'chat-page--composer' : ''}`.trim()}
+    >
       <div className="chat-column">
         {showComposer ? (
           <div className="chat-empty">
@@ -1032,234 +1279,110 @@ export function CitationChat() {
         ) : null}
 
         {showWorkspace ? (
-          <div className="analysis-workspace" ref={streamRef}>
-            <section className="analysis-essay" aria-label="Your draft">
-              <div className="analysis-essay__head">
-                <span className="analysis-essay__label">Your Draft</span>
-                <span className="analysis-essay__meta pg-subtle">
-                  {essay.trim().length.toLocaleString()} Characters · {styleLabel}
-                </span>
+          <div className="analysis-workspace analysis-workspace--split" ref={streamRef}>
+            <section className="workspace-draft" aria-label="Your draft">
+              <div className="workspace-draft__head">
+                <p className="workspace-draft__eyebrow">Live Draft</p>
+                <h2 className="workspace-draft__title">{resolvedDraftTitle}</h2>
+                <p className="workspace-draft__meta">
+                  {countWords(essay).toLocaleString()} Words · {styleLabel}
+                  {progress.total > 0
+                    ? ` · ${progress.current}/${progress.total} Cited`
+                    : sentences.length > 0
+                      ? ` · ${sentences.length} To Cite`
+                      : ''}
+                </p>
               </div>
-              <pre className="analysis-essay__body">{essay.trim()}</pre>
+              <div className="workspace-draft__canvas">
+                {phase === 'theater_done' && citedDraftText ? (
+                  <pre className="workspace-draft__fallback">{citedDraftText}</pre>
+                ) : sentences.length > 0 ? (
+                  <LiveEssayCanvas
+                    essay={theaterEssay}
+                    sentences={sentences}
+                    live={theaterLive}
+                    focusIndex={
+                      phase === 'generating' || pickingMatch != null ? focusIndex : null
+                    }
+                    styleId={settings.styleId}
+                  />
+                ) : (
+                  <pre className="workspace-draft__fallback">{formatEssayForDisplay(essay)}</pre>
+                )}
+              </div>
             </section>
 
-            <section className="analysis-panel" aria-label="Draft analysis">
-              <details
-                className={`analysis-status ${phase === 'analyzing' ? 'is-busy' : ''}`.trim()}
-                open={reasoningOpen}
-                onToggle={(e) => setReasoningOpen((e.target as HTMLDetailsElement).open)}
-              >
-                <summary className="analysis-status__summary">
-                  {phase === 'analyzing' ? <span className="status-dot" /> : null}
-                  <span className="analysis-status__title">{analysisStatusLabel}</span>
-                  {analysisReasoning || phase === 'analyzing' ? (
-                    <span className="analysis-status__hint pg-subtle">
-                      {phase === 'analyzing' ? 'Working…' : 'Show Reasoning'}
-                    </span>
-                  ) : null}
-                </summary>
-                <div className="analysis-status__body">
-                  {phase === 'analyzing' && !analysisReasoning ? (
-                    <p className="pg-muted">
-                      Isolating transferable claims, skipping plans and opinions, and building
-                      search queries without essay-only brand names.
-                    </p>
-                  ) : null}
-                  {analysisReasoning ? (
-                    <pre className="analysis-status__reasoning">{analysisReasoning}</pre>
-                  ) : phase !== 'analyzing' ? (
-                    <p className="pg-muted">No detailed reasoning was returned for this run.</p>
-                  ) : null}
-                </div>
-              </details>
-
-              {phase === 'quoted' ? (
-                <div className="analysis-results">
-                  <div className="quote-meta">
-                    <span className="quote-chip">
-                      {citesRequired} sentence{citesRequired === 1 ? '' : 's'}
-                    </span>
-                    <span className="quote-chip">{citesRequired} Cites required</span>
-                    <span className="quote-chip">{balance} Cites</span>
-                  </div>
-
-                  {!enough ? (
-                    <div className="topup-prompt">
-                      <p>
-                        You&apos;re a little short on Cites ({balance}/{citesRequired}). Top up on
-                        Cites, subscribe to Pro for a monthly refill, or invite a friend. You both get
-                        50 Cites when they sign up with your code.
-                      </p>
-                      <div className="topup-actions">
-                        <Link href="/cites">
-                          <Button variant="accent">Open Cites</Button>
-                        </Link>
-                        <Link href="/upgrade">
-                          <Button variant="primary">
-                            {isPro ? 'Open Plan' : 'Compare Plans'}
+            <section className="workspace-status" aria-label="Agent Feed">
+              <AgentTimeline
+                steps={timelineSteps}
+                reasoning={timelineReasoning}
+                liveClockMs={liveClockMs ?? undefined}
+                sentences={sentences.map((s) => ({ index: s.index, text: s.text }))}
+                live={theaterLive}
+                stages={sentenceStages}
+                possibleMatches={possibleMatches}
+                onPickMatch={(sentenceIndex, matchIndex) => {
+                  void pickMatch(sentenceIndex, matchIndex)
+                }}
+                pickingMatch={pickingMatch}
+                footerCentered={
+                  (phase === 'quoted' && citesRequired === 0 && Boolean(generationId)) ||
+                  (phase === 'theater_done' && Boolean(generationId))
+                }
+                footer={
+                  <>
+                    {phase === 'quoted' && citesRequired > 0 ? (
+                      <>
+                        {!enough ? (
+                          <div className="topup-prompt">
+                            <p>
+                              You&apos;re a little short on Cites ({balance}/{citesRequired}). Top up
+                              on Cites, subscribe to Pro for a monthly refill, or invite a friend.
+                            </p>
+                            <div className="topup-actions">
+                              <Link href="/cites">
+                                <Button variant="accent" size="sm">
+                                  Open Cites
+                                </Button>
+                              </Link>
+                              <Link href="/upgrade">
+                                <Button variant="primary" size="sm">
+                                  {isPro ? 'Open Plan' : 'Compare Plans'}
+                                </Button>
+                              </Link>
+                            </div>
+                          </div>
+                        ) : (
+                          <Button variant="accent" onClick={generate}>
+                            Generate Citations
                           </Button>
-                        </Link>
-                        <Link href="/cites#refer">
-                          <Button variant="ghost">Refer a Friend</Button>
-                        </Link>
-                      </div>
-                    </div>
-                  ) : null}
-
-                  {sentences.length > 0 ? (
-                    <ChatCollapse
-                      title="Sentences to Cite"
-                      meta={`${sentences.length}`}
-                      defaultOpen={sentences.length <= 8}
-                    >
-                      <ul className="sentence-list">
-                        {sentences.map((s) => (
-                          <li key={s.index}>
-                            <span className="sentence-index">{s.index + 1}</span>
-                            <span>{s.text}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </ChatCollapse>
-                  ) : null}
-
-                  {enough && citesRequired > 0 ? (
-                    <div className="chat-actions chat-actions--full">
-                      <Button variant="accent" onClick={generate}>
-                        Generate Citations
-                      </Button>
-                    </div>
-                  ) : !enough ? null : generationId ? (
-                    <div className="chat-actions chat-actions--full">
+                        )}
+                      </>
+                    ) : null}
+                    {phase === 'quoted' && citesRequired === 0 && generationId ? (
                       <Link href={`/c/${generationId}`}>
                         <Button variant="accent">View in Library</Button>
                       </Link>
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
-
-              {phase === 'error' && error && !showTheater ? (
-                <p className="chat-error">{error}</p>
-              ) : null}
-
-              {phase === 'done' && result ? (
-                <div className="analysis-results">
-                  <p className="chat-agent-lead">
-                    Nice work! Your citations are ready and your bibliography is right below.
-                  </p>
-                  {generationId ? (
-                    <div className="chat-actions">
-                      <Link href={`/c/${generationId}`} className="chat-text-link">
-                        Open in Library
-                      </Link>
-                    </div>
-                  ) : null}
-
-                  <div className="result-section">
-                    <div className="result-section__head">
-                      <h3 className="result-section__title">Cited Draft</h3>
-                      <Button
-                        variant="success"
-                        size="sm"
-                        onClick={() => void copyText('essay', formatEssayForDisplay(displayEssay))}
-                      >
-                        {copied === 'essay' ? 'Copied' : 'Copy Draft'}
+                    ) : null}
+                    {phase === 'theater_done' && generationId ? (
+                      <Button variant="accent" onClick={onViewDraft}>
+                        Open Draft
                       </Button>
-                    </div>
-                    <pre className="essay-output">{formatEssayForDisplay(displayEssay)}</pre>
-                  </div>
-
-                  {correctionCount > 0 ? (
-                    <ChatCollapse title="Suggested Corrections" meta={`${correctionCount}`}>
-                      <ul className="corrections">
-                        {result.citations
-                          .filter((c) => c.correction)
-                          .map((c) => (
-                            <li key={c.index}>
-                              <p className="pg-subtle">Original</p>
-                              <p>{c.sentence}</p>
-                              <p className="pg-subtle">Suggested</p>
-                              <p>{c.correction}</p>
-                              <Button
-                                size="sm"
-                                variant={acceptedCorrections[c.index] ? 'accent' : 'ghost'}
-                                onClick={() =>
-                                  setAcceptedCorrections((prev) => ({
-                                    ...prev,
-                                    [c.index]: !prev[c.index],
-                                  }))
-                                }
-                              >
-                                {acceptedCorrections[c.index] ? 'Accepted' : 'Accept'}
-                              </Button>
-                            </li>
-                          ))}
-                      </ul>
-                    </ChatCollapse>
-                  ) : null}
-
-                  <div className="result-section">
-                    <div className="result-section__head">
-                      <h3 className="result-section__title">
-                        Bibliography
-                        <span className="result-section__meta">{result.bibliography.length}</span>
-                      </h3>
-                      <Button
-                        variant="success"
-                        size="sm"
-                        onClick={() =>
-                          void copyText(
-                            'bibliography',
-                            formatBibliographyForCopy(result.bibliography),
-                          )
-                        }
-                      >
-                        {copied === 'bibliography' ? 'Copied' : 'Copy Bibliography'}
+                    ) : null}
+                    {phase === 'error' && error ? (
+                      <Button variant="accent" onClick={onTheaterRetry}>
+                        Try Again
                       </Button>
-                    </div>
-                    <ol className="bibliography">
-                      {result.bibliography.map((entry) => (
-                        <li key={entry}>{entry}</li>
-                      ))}
-                    </ol>
-                  </div>
-                </div>
-              ) : null}
+                    ) : null}
+                  </>
+                }
+              />
             </section>
-
-            {showTheater ? (
-              <section className="analysis-theater" aria-label="Citation progress">
-                <GenerationTheater
-                  embedded
-                  essay={theaterEssay}
-                  sentences={sentences}
-                  live={theaterLive}
-                  activeIndexes={activeIndexes}
-                  stages={sentenceStages}
-                  progress={progress}
-                  statusMessage={statusMessage}
-                  title={draftTitle}
-                  styleId={settings.styleId}
-                  possibleMatches={possibleMatches}
-                  mode={
-                    phase === 'theater_done' ? 'complete' : phase === 'error' ? 'error' : 'running'
-                  }
-                  error={error}
-                  onViewDraft={onViewDraft}
-                  onRetry={onTheaterRetry}
-                  allowSentenceRetry={isPro}
-                  retryingIndex={retryingIndex}
-                  onRetrySentence={(idx) => void retrySentence(idx)}
-                  onLockedRetry={() => setUpsell({ feature: 'retry' })}
-                />
-              </section>
-            ) : null}
           </div>
         ) : null}
 
         {showComposer ? (
-        <div className="composer">
+        <div className="composer" ref={composerRef}>
           <div
             className="composer-prefs"
             ref={prefsRef}
@@ -1457,6 +1580,17 @@ export function CitationChat() {
                 Analyze Draft
               </Button>
             </div>
+          </div>
+
+          <div className="composer-links">
+            <textarea
+              ref={sourceLinksRef}
+              className="composer-links__input"
+              placeholder="If any, paste your source URLs or DOIs that you've used…"
+              value={sourceLinks}
+              onChange={(e) => setSourceLinks(e.target.value)}
+              disabled={busy}
+            />
           </div>
         </div>
         ) : null}

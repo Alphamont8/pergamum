@@ -16,6 +16,7 @@ import {
   getUserCitationEntitlements,
 } from '@/lib/billing/entitlements'
 import { generateEssayTitle, needsGeneratedTitle } from '@/lib/essay/title'
+import { resolveProvidedLinks } from '@/lib/cite/providedLinks'
 import type { GenerationSettings, SourceRecord } from '@/types'
 
 export const maxDuration = 300
@@ -137,7 +138,10 @@ export async function POST(request: Request) {
               if (!error) send('title', { title })
               return title
             })
-          : Promise.resolve(generation.title as string)
+          : Promise.resolve(generation.title as string).then((title) => {
+              if (title && !needsGeneratedTitle(title)) send('title', { title })
+              return title
+            })
 
         send('status', {
           step: 'generating',
@@ -187,6 +191,9 @@ export async function POST(request: Request) {
         const jobs: CiteJob[] = new Array(sentences.length)
         let cursor = 0
         const searchCache = createCitationSearchCache()
+        const providedSources = await resolveProvidedLinks(
+          typeof settings.sourceLinks === 'string' ? settings.sourceLinks : '',
+        )
 
         async function worker() {
           while (cursor < sentences.length) {
@@ -211,6 +218,7 @@ export async function POST(request: Request) {
               claimQuery: claimQueryFromAnalyzed(sentence),
               analyzedSentence: sentence,
               searchCache,
+              providedSources,
               onStage: (stage: CitationPipelineStage) => {
                 send('progress', {
                   step: stage,
@@ -223,7 +231,19 @@ export async function POST(request: Request) {
             })
 
             if (result.status === 'done' && result.record) {
-              sharedSourcesRef.current = [...sharedSourcesRef.current, result.record]
+              const next = result.record
+              const nextDoi = next.doi?.replace(/^https?:\/\/(?:dx\.)?doi\.org\//i, '').toLowerCase()
+              const already = sharedSourcesRef.current.some((s) => {
+                if (nextDoi && s.doi) {
+                  const d = s.doi.replace(/^https?:\/\/(?:dx\.)?doi\.org\//i, '').toLowerCase()
+                  if (d === nextDoi) return true
+                }
+                if (next.openAlexId && s.openAlexId && next.openAlexId === s.openAlexId) return true
+                return s.id === next.id
+              })
+              if (!already) {
+                sharedSourcesRef.current = [...sharedSourcesRef.current, next]
+              }
               // Provisional in-text for live theater; final pass below normalizes order.
               try {
                 result.bibliography = await formatBibliographyEntry(

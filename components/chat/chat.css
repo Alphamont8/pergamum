@@ -1,8 +1,11 @@
 .chat-page {
-  min-height: calc(100dvh - var(--topbar-h));
+  flex: 1;
+  min-height: 0;
+  width: 100%;
   display: flex;
   justify-content: center;
   background: var(--bg);
+  overflow: hidden;
 }
 
 .chat-page--theater {
@@ -13,8 +16,11 @@
   width: min(100%, var(--chat-max));
   display: flex;
   flex-direction: column;
-  min-height: calc(100dvh - var(--topbar-h));
-  padding: 0 20px 16px;
+  flex: 1;
+  min-height: 0;
+  max-height: 100%;
+  overflow: hidden;
+  padding: 0 var(--workspace-pad) var(--workspace-pad);
 }
 
 .chat-column--theater {
@@ -22,8 +28,47 @@
   padding-top: 8px;
 }
 
-.chat-page--workspace .chat-column {
-  min-height: calc(100dvh - var(--topbar-h));
+.chat-page--composer {
+  flex-direction: column;
+  align-items: center;
+}
+
+.chat-page--composer .chat-empty {
+  margin: 0;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 4px 4px 8px;
+  overflow: hidden;
+}
+
+.chat-page--composer .composer {
+  --composer-draft-min-h: min(151px, 22dvh);
+  --composer-draft-max-h: min(227px, 32dvh);
+  --composer-links-h: calc(var(--composer-draft-min-h) * 0.6);
+  position: static;
+  flex-shrink: 0;
+  padding-top: 0;
+  background: var(--bg);
+}
+
+@media (max-height: 720px) {
+  .chat-page--composer .chat-empty__tagline {
+    display: none;
+  }
+
+  .chat-page--composer .chat-empty h1 {
+    margin-bottom: 0;
+    font-size: clamp(24px, 4.5vw, 32px);
+  }
+
+  .chat-page--composer .composer {
+    --composer-draft-min-h: min(120px, 18dvh);
+    --composer-draft-max-h: min(180px, 26dvh);
+    --composer-links-h: calc(var(--composer-draft-min-h) * 0.6);
+  }
 }
 
 .analysis-workspace {
@@ -706,6 +751,10 @@
 
 /* Composer */
 .composer {
+  --composer-draft-min-h: 151px;
+  --composer-draft-max-h: 227px;
+  --composer-draft-h: var(--composer-draft-min-h);
+  --composer-links-h: calc(var(--composer-draft-min-h) * 0.6);
   position: sticky;
   bottom: 0;
   padding-top: 8px;
@@ -842,8 +891,8 @@
 .composer-input {
   width: 100%;
   resize: none;
-  min-height: 151px;
-  max-height: 227px;
+  min-height: var(--composer-draft-min-h);
+  max-height: var(--composer-draft-max-h);
   border: 0;
   background: transparent;
   padding: 12px 12px 4px;
@@ -851,6 +900,45 @@
   line-height: 1.55;
   font-size: 14px;
   overflow-y: hidden;
+}
+
+.composer-input::placeholder {
+  color: var(--fg-subtle);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.composer-links {
+  margin: 8px 0 0;
+}
+
+.composer-links__input {
+  width: 100%;
+  height: var(--composer-links-h, calc(var(--composer-draft-h) * 0.6));
+  min-height: calc(var(--composer-draft-min-h) * 0.6);
+  max-height: calc(var(--composer-draft-max-h) * 0.6);
+  resize: none;
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-lg);
+  background: var(--bg-elevated);
+  box-shadow: 0 8px 28px color-mix(in srgb, var(--fg) 4%, transparent);
+  padding: 10px 12px;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--fg);
+  outline: none;
+  overflow-y: auto;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.composer-links__input:focus {
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border-hairline));
+  box-shadow: 0 10px 32px color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.composer-links__input::placeholder {
+  color: var(--fg-subtle);
 }
 
 .composer-footer {

@@ -23,9 +23,24 @@ function looksLikeTitle(value: string): boolean {
   if (/^(we need|write a|here is|title:|the title|output|json|essay|possible)/i.test(value)) {
     return false
   }
-  if (/\b(in|of|the|a|an|and|for|to)$/i.test(value)) return false
+  // Reject truncated sentence openings.
+  if (
+    /^(lighting|hypertension|strict|working|in|when|after|during|social|climate)\s+\w+\s+(forms|remains|requires|predicts|proposes|can|will|has|have|is|are|show|shows)\b/i.test(
+      value,
+    )
+  ) {
+    return false
+  }
+  // Reject titles that still read like claim verbs rather than noun phrases.
+  if (/\b(Show|Shows|Requires|Predicts|Obtained|Remains|Forms|Propose|Proposes)\b/.test(value)) {
+    return false
+  }
   const words = value.split(/\s+/).filter(Boolean)
-  return words.length >= 2 && words.length <= 12
+  if (words.length < 2 || words.length > 10) return false
+  // Prefer Title Case-ish output (at least half the words capitalized).
+  const capped = words.filter((w) => /^[A-Z]/.test(w)).length
+  if (capped < Math.ceil(words.length * 0.5)) return false
+  return true
 }
 
 function extractTitle(raw: string): string | null {
@@ -58,12 +73,6 @@ function extractTitle(raw: string): string | null {
   }
 
   return null
-}
-
-function fallbackTitle(essay: string): string {
-  const first = essay.trim().split(/\n+/)[0]?.replace(/\s+/g, ' ').trim() ?? ''
-  if (!first) return 'Untitled draft'
-  return first.length > 72 ? `${first.slice(0, 72).trim()}…` : first
 }
 
 export function needsGeneratedTitle(title: string | null | undefined): boolean {
@@ -119,14 +128,96 @@ ${excerpt}
   try {
     const raw = await complete(messages, {
       system: ESSAY_TITLE_PLAIN_SYSTEM,
-      temperature: 0.1,
+      temperature: 0.15,
       maxTokens: 40,
     })
-    const extracted = extractTitle(raw) || cleanTitle(raw.split('\n').pop() ?? raw)
+    const extracted = extractTitle(raw) || cleanTitle(raw.split('\n')[0] ?? raw)
     if (extracted && looksLikeTitle(extracted)) return extracted
   } catch {
     /* fall through */
   }
 
-  return fallbackTitle(essay)
+  // Third pass: force a terse noun-phrase answer.
+  try {
+    const raw = await complete(
+      [
+        {
+          role: 'user',
+          content: `Write a 3-6 word Title Case noun-phrase title for this essay (not a full sentence). Reply with the title only.\n\n${excerpt.slice(0, 600)}`,
+        },
+      ],
+      { temperature: 0.2, maxTokens: 24 },
+    )
+    const cleaned = cleanTitle(raw.split('\n')[0] ?? raw)
+    if (looksLikeTitle(cleaned)) return cleaned
+  } catch {
+    /* fall through */
+  }
+
+  return heuristicTitle(excerpt)
+}
+
+function heuristicTitle(essay: string): string {
+  const stop = new Set([
+    'the',
+    'a',
+    'an',
+    'and',
+    'or',
+    'of',
+    'in',
+    'on',
+    'to',
+    'for',
+    'with',
+    'that',
+    'this',
+    'is',
+    'are',
+    'was',
+    'were',
+    'be',
+    'as',
+    'by',
+    'from',
+    'at',
+    'it',
+    'its',
+    'remains',
+    'forms',
+    'one',
+    'also',
+    'has',
+    'have',
+    'can',
+    'will',
+    'should',
+    'requires',
+    'predicts',
+    'proposes',
+    'obtained',
+    'produce',
+    'produces',
+    'show',
+    'shows',
+    'government',
+  ])
+
+  // Prefer contentful nouns from the first two sentences rather than a truncated clause.
+  const sample = essay
+    .split(/(?<=[.!?])\s+|\n+/)
+    .map((l) => l.replace(/\s+/g, ' ').trim())
+    .filter((l) => l.length >= 12)
+    .slice(0, 2)
+    .join(' ')
+
+  const words = sample
+    .replace(/[^\p{L}\p{N}\s'-]/gu, ' ')
+    .split(/\s+/)
+    .filter((w) => w.length > 3 && !stop.has(w.toLowerCase()))
+    .slice(0, 5)
+
+  if (words.length < 2) return 'Untitled draft'
+  const title = words.map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ')
+  return looksLikeTitle(title) ? title : 'Untitled draft'
 }

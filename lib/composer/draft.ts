@@ -11,6 +11,8 @@ export interface ComposerDraftDefaults {
 export interface ComposerDraft {
   essay: string
   settings: GenerationSettings
+  /** Optional pasted source links / DOIs. */
+  sourceLinks?: string
 }
 
 const STORAGE_PREFIX = 'pergamum-composer-draft'

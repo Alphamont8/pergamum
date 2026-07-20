@@ -1,0 +1,38 @@
+npm warn Unknown env config "devdir". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn exec The following package was not found and will be installed: tsx@4.23.1
+Starting self-training: 10 scenarios (max 2 cites each)…
+
+── Run 1/10 · Undergrad psych lab write-up
+   score=90 claims=3 cite=done,failed issues=0
+── Run 2/10 · Brand strategy memo with invented product
+[openalex] semantic search failed 400 Lighting is a key element of the atmospheric in-store experience and has a signi
+[openalex] semantic search failed 400 Warm colour temperatures used in retail lighting are associated with customers s
+   score=100 claims=2 cite=done,done issues=0
+── Run 3/10 · Policy brief with recent events
+[exa] request error The operation was aborted due to timeout
+   score=85 claims=3 cite=done,failed issues=0
+── Run 4/10 · Personal reflection / no facts
+   score=100 claims=0 cite=n/a issues=0
+── Run 5/10 · Public health / clinical claim
+[openalex] semantic search failed 400 Hypertension is one of the most important modifiable risk factors for cardiovasc
+[openalex] semantic search failed 400 Lifestyle interventions that combine dietary sodium reduction with regular aerob
+   score=95 claims=4 cite=done,done issues=0
+── Run 6/10 · Undergraduate constitutional law essay
+   score=95 claims=3 cite=done,done issues=0
+── Run 7/10 · Draft that already has APA in-text cites
+   score=100 claims=2 cite=done,done issues=0
+── Run 8/10 · Messy Word paste with soft wraps
+[openalex] request error openalex-504
+[openalex] request error openalex-504
+   score=100 claims=2 cite=done,done issues=0
+── Run 9/10 · History survey essay
+[openalex] request error openalex-504
+[openalex] request error openalex-504
+   score=100 claims=3 cite=done,done issues=0
+── Run 10/10 · STEM + product launch mix
+[openalex] semantic search failed 400 Repeatedly charging lithium-ion batteries to 100% state of charge accelerates th
+[openalex] semantic search failed 400 Lithium-ion battery cycle life is improved by limiting charge voltage and storin
+   score=100 claims=2 cite=done,done issues=0
+
+Wrote /Users/chungsi1/Documents/Pergamum/scripts/self-train-report.json
+Avg score 96.5 · cite success 16/18

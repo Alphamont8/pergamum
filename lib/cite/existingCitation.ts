@@ -159,16 +159,32 @@ function authorMatchesRecord(authors: string[], record: SourceRecord): boolean {
     .join(' ')
     .toLowerCase()
   if (!blob.trim()) return false
-  const primary = surname(authors[0])
-  if (!primary || primary.length < 2) return false
-  return blob.includes(primary)
+  // Require every provided surname to appear (order-insensitive).
+  return authors.every((author) => {
+    const primary = surname(author)
+    return primary.length >= 2 && blob.includes(primary)
+  })
 }
 
 function yearMatchesRecord(year: string | undefined, record: SourceRecord): boolean {
   if (!year) return true
   const y = year.slice(0, 4)
   const ry = (record.year ?? record.publicationDate ?? '').slice(0, 4)
-  return !ry || ry === y
+  // Missing year on record is not a match for author–year resolves.
+  if (!ry) return false
+  return ry === y
+}
+
+function titleLooksOnTopic(cite: ExistingCitation, record: SourceRecord): boolean {
+  // DOI resolves do not need title heuristics.
+  if (cite.doi) return true
+  const title = (record.title ?? '').toLowerCase()
+  if (!title.trim()) return false
+  // Reject clearly wrong disciplines when surnames are common (e.g. chemistry for social psych).
+  const offTopic =
+    /\b(phosphorus|nitrogen|boron|heteroatomic|inorganic compounds|polymer synthesis|catalysis|chromatography)\b/i
+  if (offTopic.test(title) && cite.authors.length) return false
+  return true
 }
 
 function workToSourceRecord(work: OpenAlexWork, tag: string): SourceRecord {
@@ -204,6 +220,7 @@ function scoreCandidate(cite: ExistingCitation, record: SourceRecord): number {
   else score -= 4
   if (record.abstract || record.summary) score += 1
   if (record.venue?.name) score += 0.5
+  if (!titleLooksOnTopic(cite, record)) score -= 8
   return score
 }
 
@@ -258,7 +275,7 @@ export async function resolveExistingCitation(
 
   const scored = candidates
     .map((record) => ({ record, score: scoreCandidate(cite, record) }))
-    .filter((c) => c.score >= 3)
+    .filter((c) => c.score >= (cite.doi ? 8 : 6))
     .sort((a, b) => b.score - a.score)
 
   let best = scored[0]?.record
@@ -274,6 +291,7 @@ export async function resolveExistingCitation(
 
   if (!authorMatchesRecord(cite.authors, best) && !cite.doi) return null
   if (!yearMatchesRecord(cite.year, best) && !cite.doi) return null
+  if (!titleLooksOnTopic(cite, best)) return null
 
   return best
 }

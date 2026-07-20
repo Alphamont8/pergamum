@@ -1,3 +1,5 @@
+import { formatAppDate, formatAppDateTime } from '@/lib/format/date'
+
 export type LibrarySyncDetail =
   | { action: 'title'; id: string; title: string }
   | { action: 'pin'; id: string; pinned: boolean; pinnedAt: string | null }
@@ -47,13 +49,16 @@ export function countSuccessfulCitations(
 }
 
 export function formatListMeta(createdAt: string, citationsDone: number): string {
-  const datePart = new Date(createdAt).toLocaleDateString()
+  const datePart = formatAppDate(createdAt)
   return `${datePart} · ${formatCitationLabel(citationsDone)}`
 }
 
-export function formatDraftMeta(createdAt: string, citationsDone: number): string {
-  const date = new Date(createdAt)
-  const datePart = date.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })
-  const timePart = date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
-  return `${datePart} · ${timePart} · ${formatCitationLabel(citationsDone)}`
+export function formatDraftMeta(
+  createdAt: string,
+  citationsDone: number,
+  styleLabel?: string | null,
+): string {
+  const parts = [formatAppDateTime(createdAt), formatCitationLabel(citationsDone)]
+  if (styleLabel?.trim()) parts.push(styleLabel.trim())
+  return parts.join(' · ')
 }

@@ -1,0 +1,57 @@
+{
+  "generatedAt": "2026-07-20T17:07:05.540Z",
+  "summary": {
+    "runs": 1,
+    "avgScore": 83,
+    "citeAttempted": 0,
+    "citeDone": 0,
+    "citeSuccessRate": null
+  },
+  "improvementBuckets": {
+    "Claim selection volume": {
+      "count": 1,
+      "examples": [
+        "Run 6: Too few claims: got 0, expected ≥ 1."
+      ]
+    },
+    "Latency": {
+      "count": 1,
+      "examples": [
+        "Run 6: Slow analyze (135s)."
+      ]
+    }
+  },
+  "alwaysOnIdeas": [
+    "Feed copy: surface miss reason + near-miss titles more prominently when verify fails.",
+    "Analyze: stream incremental status (claims found so far) instead of waiting for full structured JSON.",
+    "Cite: when existingCitation is present, short-circuit to resolve-only path and skip discovery when resolve succeeds.",
+    "Alignment: if locate fails, fuzzy-match by longest common subsequence rather than dropping the claim.",
+    "Brand guard: strip isLikelyEssaySpecificEntity from academicQuery/webQuery after model output (already partial) and log when stripped.",
+    "Eval harness: keep this script and add golden fixtures for mustSkip / brandBan regressions."
+  ],
+  "runs": [
+    {
+      "id": 6,
+      "persona": "legal",
+      "label": "Undergraduate constitutional law essay",
+      "why": "Should set legal=true; doctrine claims need sources.",
+      "title": "Strict Scrutiny Government Show Narrowly",
+      "analyzeMs": 135046,
+      "medical": false,
+      "legal": true,
+      "reasoningPreview": "",
+      "rawSentenceCount": 0,
+      "alignedCount": 0,
+      "selected": [],
+      "citeResults": [],
+      "citeRate": null,
+      "issues": [
+        "Too few claims: got 0, expected ≥ 1."
+      ],
+      "notes": [
+        "Slow analyze (135s)."
+      ],
+      "score": 83
+    }
+  ]
+}

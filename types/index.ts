@@ -194,6 +194,11 @@ export interface GenerationSettings {
   medical?: boolean
   /** Set server-side during analysis; routes legal essays through the US legal database (Pro). */
   legal?: boolean
+  /**
+   * Optional user-pasted source links / DOIs. When set, the pipeline prefers these
+   * records over discovery search for matching claims.
+   */
+  sourceLinks?: string
 }
 
 export interface Profile {

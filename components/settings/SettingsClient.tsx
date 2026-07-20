@@ -13,6 +13,7 @@ import { ProUpsellDialog } from '@/components/billing/ProUpsellDialog'
 import { useTheme } from '@/components/theme/ThemeProvider'
 import { planDisplayName, PRO_MONTHLY_CITES } from '@/lib/billing/plans'
 import { PRO_FEATURES_TRIAL_DAYS, type ProTrialSnapshot } from '@/lib/billing/proTrial.shared'
+import { formatAppDate } from '@/lib/format/date'
 import { REFERENCING_STYLES } from '@/utils/referencingStyle'
 import type { ProUpsellFeature } from '@/lib/billing/proUpsell'
 import type {
@@ -156,19 +157,10 @@ export function SettingsClient({
   const saveEnabled = profileDirty || prefsAppearDirty
 
   const periodEnd = initial.subscription?.currentPeriodEnd
-    ? new Date(initial.subscription.currentPeriodEnd).toLocaleDateString([], {
-        month: 'long',
-        day: 'numeric',
-        year: 'numeric',
-      })
+    ? formatAppDate(initial.subscription.currentPeriodEnd)
     : null
 
-  const trialEnd = initial.trial.endsAt
-    ? new Date(initial.trial.endsAt).toLocaleDateString([], {
-        month: 'long',
-        day: 'numeric',
-      })
-    : null
+  const trialEnd = initial.trial.endsAt ? formatAppDate(initial.trial.endsAt) : null
 
   const planTierLabel = isFeaturesTrial ? 'Pro Trial' : planDisplayName(initial.planTier)
   const upgradeLabel =

@@ -10,6 +10,7 @@ import { LibraryProvider, useLibrary } from '@/components/shell/LibraryContext'
 import { ProfileAvatar } from '@/components/shell/ProfileAvatar'
 import type { ProTrialSnapshot } from '@/lib/billing/proTrial.shared'
 import { PRO_MONTHLY_CITES } from '@/lib/billing/plans'
+import { formatAppDate } from '@/lib/format/date'
 import type { BillingInterval, PlanTier, SubscriptionStatus } from '@/types'
 import './shell.css'
 
@@ -58,19 +59,8 @@ function AppShellInner({
   const isPro = profile.planTier === 'pro'
   const isFeaturesTrial = profile.trial.phase === 'active'
   const sub = profile.subscription
-  const periodEnd = sub?.currentPeriodEnd
-    ? new Date(sub.currentPeriodEnd).toLocaleDateString([], {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-      })
-    : null
-  const trialEnd = profile.trial.endsAt
-    ? new Date(profile.trial.endsAt).toLocaleDateString([], {
-        month: 'short',
-        day: 'numeric',
-      })
-    : null
+  const periodEnd = sub?.currentPeriodEnd ? formatAppDate(sub.currentPeriodEnd) : null
+  const trialEnd = profile.trial.endsAt ? formatAppDate(profile.trial.endsAt) : null
   const trialDays = profile.trial.daysRemaining
 
   const billingBanner = !bannerDismissed

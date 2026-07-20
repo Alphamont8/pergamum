@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { BackLink } from '@/components/ui/BackLink'
 import { Button } from '@/components/ui/Button'
+import { formatAppDate } from '@/lib/format/date'
 import {
   DEFAULT_PRO_BILLING_INTERVAL,
   planDisplayName,
@@ -48,11 +49,7 @@ interface UpgradeInitialState {
 
 function formatShortDate(iso: string | null | undefined) {
   if (!iso) return null
-  return new Date(iso).toLocaleDateString([], {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  })
+  return formatAppDate(iso)
 }
 
 function daysUntil(iso: string | null | undefined) {
@@ -156,11 +153,7 @@ export function UpgradePageClient({ initial }: { initial: UpgradeInitialState })
   const annualBillPrice = proAnnualBillPrice()
   const monthlyBillPrice = formatProPrice(PRO_PRICING.month.displayMonthlyCents)
   const periodEnd = initial.subscription?.currentPeriodEnd
-    ? new Date(initial.subscription.currentPeriodEnd).toLocaleDateString([], {
-        month: 'long',
-        day: 'numeric',
-        year: 'numeric',
-      })
+    ? formatAppDate(initial.subscription.currentPeriodEnd)
     : null
   const trialEnd = formatShortDate(initial.trial.endsAt)
   const trialDays = initial.trial.daysRemaining

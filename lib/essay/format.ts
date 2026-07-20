@@ -1,46 +1,81 @@
+const SENTENCE_END = /[.!?…]["'”’)\]]*\s*$/
+
+function isListLine(line: string): boolean {
+  return /^\s*(?:[-•*]|\d+[.)])\s+/.test(line.trim())
+}
+
+/** True when a single newline looks like a soft wrap, not a deliberate break. */
+function shouldMergeSplitLines(previous: string, next: string): boolean {
+  const prev = previous.trimEnd()
+  const nextLine = next.trimStart()
+  if (!prev || !nextLine) return false
+  if (isListLine(prev) || isListLine(nextLine)) return false
+
+  // Hyphenated word wrap: "inter-\nnational"
+  if (/-$/.test(prev)) return true
+
+  // Next line continues mid-sentence.
+  if (/^[a-z('"‘“(]/.test(nextLine)) return true
+
+  // Previous line does not end a sentence — likely wrapped.
+  if (!SENTENCE_END.test(prev)) return true
+
+  return false
+}
+
+function joinSplitLines(previous: string, next: string): string {
+  const prev = previous.trimEnd()
+  const nextLine = next.trimStart()
+  if (/-$/.test(prev)) return prev.slice(0, -1) + nextLine
+  return `${prev} ${nextLine}`
+}
+
+/** Merge soft single-newline wraps inside one paragraph block. */
+export function mergeSoftLineBreaks(block: string): string {
+  const lines = block.split('\n')
+  if (lines.length <= 1) return block.trim()
+
+  const parts: string[] = []
+  let current = lines[0] ?? ''
+
+  for (let i = 1; i < lines.length; i++) {
+    const next = lines[i] ?? ''
+    if (shouldMergeSplitLines(current, next)) {
+      current = joinSplitLines(current, next)
+    } else {
+      parts.push(current.trimEnd())
+      current = next
+    }
+  }
+  parts.push(current.trimEnd())
+
+  return parts
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join('\n')
+}
+
 /**
- * Display-only formatting for essays.
- * Preserves wording while normalizing spaces and splitting very long paragraphs.
+ * Display normalization for essays.
+ * Keeps paragraph breaks (`\n\n`) but merges soft single-line wraps so split
+ * sentences read as one flowing paragraph.
  */
 export function formatEssayForDisplay(raw: string): string {
-  const normalized = raw
-    .replace(/\r\n/g, '\n')
-    .replace(/\r/g, '\n')
-    .split('\n')
-    .map((line) => line.replace(/[ \t\u00a0]+/g, ' ').trim())
-    .join('\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim()
-
+  const normalized = raw.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim()
   if (!normalized) return ''
 
   return normalized
     .split(/\n\s*\n/)
-    .map((paragraph) => splitLongParagraph(paragraph.replace(/\n+/g, ' ').trim()))
+    .map((block) => mergeSoftLineBreaks(block).replace(/[ \t]+/g, ' ').trim())
     .filter(Boolean)
     .join('\n\n')
 }
 
-function splitLongParagraph(paragraph: string): string {
-  const maxLength = 850
-  if (paragraph.length <= maxLength) return paragraph
-
-  const sentences = paragraph.match(/[^.!?]+[.!?]+(?:\s+|$)|[^.!?]+$/g)
-  if (!sentences || sentences.length < 3) return paragraph
-
-  const chunks: string[] = []
-  let chunk = ''
-  for (const sentence of sentences) {
-    const next = `${chunk}${chunk ? ' ' : ''}${sentence.trim()}`
-    if (chunk && next.length > maxLength) {
-      chunks.push(chunk)
-      chunk = sentence.trim()
-    } else {
-      chunk = next
-    }
-  }
-  if (chunk) chunks.push(chunk)
-  return chunks.join('\n\n')
+/** Paragraph blocks for export (same reflow rules as display). */
+export function formatEssayParagraphs(raw: string): string[] {
+  const formatted = formatEssayForDisplay(raw)
+  if (!formatted) return []
+  return formatted.split(/\n\s*\n/).filter(Boolean)
 }
 
 /** Light whitespace cleanup for newly pasted essays without changing wording. */

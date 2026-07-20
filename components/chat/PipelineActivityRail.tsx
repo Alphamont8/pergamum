@@ -7,8 +7,9 @@ import type { LiveSentenceState } from '@/lib/essay/liveSegments'
 export interface ActivityLogEntry {
   id: string
   sentenceIndex?: number
-  stage: CitationPipelineStage | 'searching' | 'idle'
+  stage: CitationPipelineStage | 'searching' | 'idle' | 'analyze'
   message: string
+  detail?: string
   at: number
 }
 

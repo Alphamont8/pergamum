@@ -74,10 +74,120 @@ const MAX_WEB_QUERIES_PRO = 3
 const MAX_WEB_QUERIES_BASIC = 2
 /** Passage token overlap above this prefers evidence-rich candidates. */
 const PASSAGE_OVERLAP_PREFERRED = 0.35
-/** Auto soft-accept identity+overlap without needing high LLM confidence. */
-const EXISTENCE_SOFT_SIM = 0.55
-const EXISTENCE_SOFT_OVERLAP = 0.4
+/** Soft-accept identity+overlap only with claim support. */
+const EXISTENCE_SOFT_SIM = 0.58
+const EXISTENCE_SOFT_OVERLAP = 0.45
 const POSSIBLE_MATCH_COUNT = 3
+
+const LEGAL_DOCTRINE_TERMS = [
+  'strict scrutiny',
+  'intermediate scrutiny',
+  'rational basis',
+  'equal protection',
+  'due process',
+  'compelling interest',
+  'narrowly tailored',
+  'suspect classification',
+  'first amendment',
+  'fourth amendment',
+  'commerce clause',
+] as const
+
+function extractDoctrineTerms(...texts: string[]): string[] {
+  const blob = texts.join(' ').toLowerCase()
+  return LEGAL_DOCTRINE_TERMS.filter((term) => blob.includes(term))
+}
+
+/** Distinctive doctrines that must appear in a supporting legal source. */
+function distinctiveDoctrines(doctrines: string[]): string[] {
+  const weakAlone = new Set(['compelling interest', 'narrowly tailored'])
+  return doctrines.filter((d) => !weakAlone.has(d))
+}
+
+function sourceCoversDoctrine(record: SourceRecord, doctrines: string[]): boolean {
+  if (!doctrines.length) return true
+  const hay = [
+    record.title ?? '',
+    record.abstract ?? '',
+    record.summary ?? '',
+    ...(record.exa?.highlights ?? []),
+  ]
+    .join(' ')
+    .toLowerCase()
+
+  const required = distinctiveDoctrines(doctrines)
+  // If the claim names distinctive doctrines, ALL of them must appear in the source.
+  // This blocks RFRA / free-exercise hits that only share "compelling interest".
+  if (required.length) {
+    return required.every((term) => hay.includes(term))
+  }
+  // Fallback when only weak phrases were detected.
+  return doctrines.some((term) => hay.includes(term))
+}
+
+/**
+ * Block cross-doctrine drift (e.g. RFRA / free-exercise papers accepted for
+ * equal-protection or generic strict-scrutiny claims).
+ */
+function legalTopicDriftReason(claim: string, record: SourceRecord): string | null {
+  const hay = [
+    record.title ?? '',
+    record.abstract ?? '',
+    record.summary ?? '',
+    ...(record.exa?.highlights ?? []),
+  ]
+    .join(' ')
+    .toLowerCase()
+  const c = claim.toLowerCase()
+
+  const claimEqualProtection =
+    /\bequal protection\b|\bsuspect classification\b|\bracial classification|\bclassifications based on race|\bgender classification|\bintermediate scrutiny\b/.test(
+      c,
+    )
+  const claimScrutinyWithoutReligion =
+    /\b(strict|intermediate)\s+scrutiny\b/.test(c) &&
+    !/\bfree exercise\b|\breligion\b|\brfra\b|\bfirst amendment\b/.test(c)
+
+  const sourceReligionPrimary =
+    /\brfra\b|religious freedom restoration|\bfree exercise\b|religion in the prison|\bprofaned\b/.test(
+      hay,
+    )
+  const sourceEqualProtection =
+    /\bequal protection\b|\bsuspect classification\b|\bracial classification|\baffirmative action\b|\bgender classification\b/.test(
+      hay,
+    )
+
+  if (
+    (claimEqualProtection || claimScrutinyWithoutReligion) &&
+    sourceReligionPrimary &&
+    !sourceEqualProtection
+  ) {
+    return 'Source focuses on free-exercise or RFRA rather than the equal-protection doctrine in the claim.'
+  }
+  return null
+}
+
+/** Strip precise numbers from a search query to improve recall; keep concepts. */
+function stripPreciseNumbers(query: string): string {
+  return query
+    .replace(/\b\d+\.\d+\b/g, ' ')
+    .replace(/\b\d{4}\b/g, ' ')
+    .replace(/\b\d+%|\b\d+\s*points?\b/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+/** Drop claim verbs / filler so keyword search hits concept papers, not narrative prose. */
+function toConceptQuery(query: string | undefined): string {
+  if (!query?.trim()) return ''
+  return query
+    .replace(
+      /\b(predicts?|predicted|obtained|obtains|reliably|roughly|requires?|required|produces?|produce|remains?|forms?|shows?|showed|suggests?|suggested|indicates?|indicated|associated|controlling|after|during|within|about|into|that|this|these|those|from|onto|over|under|between|among|through|across|against|without|whether|while|when|where|which|what|how|why|can|will|should|may|might|must|also|one|large|sample|first-year)\b/gi,
+      ' ',
+    )
+    .replace(/\s+/g, ' ')
+    .trim()
+}
 
 export type CitationProvider =
   | 'openalex'
@@ -405,18 +515,76 @@ function dedupeCandidates(candidates: CandidateSource[]): CandidateSource[] {
   return [...seen.values()]
 }
 
+function sanitizeOpenAlexQuery(query: string, mode: 'keyword' | 'semantic'): string {
+  let q = query.replace(/\s+/g, ' ').trim()
+  if (!q) return ''
+  if (mode === 'keyword') {
+    q = q.replace(/\?/g, ' ').replace(/\s+/g, ' ').trim()
+    if (/^(what|how|why|when|where|which|does|do|is|are)\b/i.test(q) && q.length > 80) {
+      q = q
+        .replace(/^(what|how|why|when|where|which|does|do|is|are)\b[\s\S]{0,40}?\b(?:that|that\s+)?/i, '')
+        .trim()
+    }
+    return q.slice(0, 180)
+  }
+  // Semantic mode: prefer short topical phrases; long NL questions often 400.
+  q = q.replace(/\?/g, ' ').replace(/\s+/g, ' ').trim()
+  if (/^(what|how|why|when|where|which|does|do|is|are)\b/i.test(q)) {
+    const stop = new Set([
+      'the',
+      'a',
+      'an',
+      'and',
+      'or',
+      'of',
+      'in',
+      'on',
+      'to',
+      'for',
+      'with',
+      'that',
+      'this',
+      'is',
+      'are',
+      'was',
+      'were',
+      'be',
+      'as',
+      'by',
+      'from',
+      'at',
+      'it',
+      'its',
+      'when',
+      'which',
+      'what',
+      'how',
+      'why',
+      'does',
+      'do',
+    ])
+    q = q
+      .split(/\s+/)
+      .filter((w) => w.length > 2 && !stop.has(w.toLowerCase()))
+      .slice(0, 18)
+      .join(' ')
+  }
+  return q.slice(0, 400)
+}
+
 function uniqueQueries(max: number, ...parts: Array<string | undefined>): string[] {
-  const out: string[] = []
   const seen = new Set<string>()
+  const out: string[] = []
   for (const part of parts) {
-    const q = part?.replace(/\s+/g, ' ').trim()
-    if (!q || q.length < 3) continue
-    const key = q.toLowerCase()
+    const cleaned = sanitizeOpenAlexQuery(part ?? '', 'keyword')
+    if (!cleaned || cleaned.length < 3) continue
+    const key = cleaned.toLowerCase()
     if (seen.has(key)) continue
     seen.add(key)
-    out.push(q)
+    out.push(cleaned)
+    if (out.length >= max) break
   }
-  return out.slice(0, Math.max(1, max))
+  return out
 }
 
 async function rankCandidates(
@@ -427,6 +595,7 @@ async function rankCandidates(
   claimYears: number[] = [],
   claimText = '',
   keywords: string[] = [],
+  preferLegal = false,
 ): Promise<{ ranked: RankedCandidate[]; queryVec: number[]; providerOrdered: boolean }> {
   if (candidates.length === 0) {
     return { ranked: [], queryVec: cachedQueryVec ?? [], providerOrdered: false }
@@ -448,6 +617,7 @@ async function rankCandidates(
         claimYears,
         claimText,
         keywords,
+        { preferLegal, provider: candidate.provider },
       ),
     }))
     return { ranked, queryVec: cachedQueryVec ?? [], providerOrdered: true }
@@ -476,6 +646,7 @@ async function rankCandidates(
         claimYears,
         claimText,
         keywords,
+        { preferLegal, provider: candidate.provider },
       ),
     }))
     .sort((a, b) => b.similarity - a.similarity)
@@ -490,6 +661,7 @@ function applyQualityAndMismatchScore(
   claimYears: number[],
   claimText: string,
   keywords: string[],
+  options?: { preferLegal?: boolean; provider?: CitationProvider },
 ): number {
   const cites = record.citedByCount ?? 0
   const citeNorm = Math.min(1, Math.log1p(cites) / Math.log1p(500))
@@ -514,6 +686,11 @@ function applyQualityAndMismatchScore(
   let score = 0.6 * cosine + 0.25 * citeNorm + 0.15 * recencyNorm + typeBoost + overlapBoost
   score -= softMismatchPenalty(record, places, claimYears)
   if (places.length && sourceMentionsPlaces(record, places)) score += 0.03
+  if (options?.preferLegal && options.provider === 'courtlistener') score += 0.08
+  if (options?.preferLegal && options.provider === 'openalex') {
+    // Softly demote OpenAlex when we have a legal essay — doctrine papers often mislead.
+    score -= 0.03
+  }
   return Math.max(0, Math.min(1, score))
 }
 
@@ -634,7 +811,7 @@ async function searchOpenAlexCandidates(
     return mapWorks(works, idx, 'k')
   })
 
-  const semText = (semanticQuery || queries[0] || '').trim()
+  const semText = sanitizeOpenAlexQuery(semanticQuery || queries[0] || '', 'semantic')
   const semanticJob = semText
     ? fetchSemantic(semText).then((works) => mapWorks(works, 0, 's'))
     : Promise.resolve([] as CandidateSource[])
@@ -675,9 +852,18 @@ async function searchLegalCandidates(
   queries: string[],
   settings: GenerationSettings,
 ): Promise<CandidateSource[]> {
-  const query = queries[0]
+  // Prefer short doctrine-heavy queries; long NL strings underperform on CourtListener.
+  const doctrineHints = queries.flatMap((q) => {
+    const terms = extractDoctrineTerms(q)
+    return terms.length ? [terms.slice(0, 3).join(' ')] : []
+  })
+  const rankedQueries = [...doctrineHints, ...queries].sort((a, b) => a.length - b.length)
+  const query =
+    rankedQueries.find((q) =>
+      /scrutiny|equal protection|due process|amendment|classification|compelling/i.test(q),
+    ) || rankedQueries[0]
   if (!query) return []
-  const opinions = await searchLegalOpinions(query, LEGAL_PER_QUERY)
+  const opinions = await searchLegalOpinions(query.slice(0, 160), LEGAL_PER_QUERY)
   return dedupeCandidates(
     opinions
       .map((opinion, i) => {
@@ -920,6 +1106,10 @@ interface VerifyContext {
   isBasic: boolean
   exaUrlCache: Map<string, Promise<SourceRecord>>
   onStage?: CitationStageReporter
+  /** Legal doctrine phrases that a supporting source should mention. */
+  doctrineTerms?: string[]
+  /** When true, require stronger evidence (existing-cite resolve path). */
+  requireStrongMatch?: boolean
 }
 
 interface PoolVerdict {
@@ -994,6 +1184,22 @@ async function verifyPool(pool: RankedCandidate[], ctx: VerifyContext): Promise<
 
     const overlap = passageOverlapScore(claim.claim, claim.keywords, record)
     const identity = hasResolvableIdentity(record)
+    const doctrines = ctx.doctrineTerms ?? []
+
+    if (doctrines.length && !sourceCoversDoctrine(record, doctrines)) {
+      bestRejected = { ...row, candidate: { ...row.candidate, record } }
+      lastRejectReason = 'Source does not discuss the legal doctrine in the claim.'
+      continue
+    }
+
+    const topicDrift = doctrines.length
+      ? legalTopicDriftReason(claim.claim, record)
+      : null
+    if (topicDrift) {
+      bestRejected = { ...row, candidate: { ...row.candidate, record } }
+      lastRejectReason = topicDrift
+      continue
+    }
 
     const verification = await verifySentenceAgainstSource({
       sentence: ctx.sentence,
@@ -1011,22 +1217,27 @@ async function verifyPool(pool: RankedCandidate[], ctx: VerifyContext): Promise<
       suggestCorrections: ctx.settings.suggestCorrections,
     })
 
+    // Require claim support; never accept on matches alone or correction alone.
+    // Legal doctrine claims must both match and clear the doctrine gate (already above).
     const softAccept =
-      verification.matches ||
-      (verification.supportsClaim && verification.confidence >= 0.55) ||
       (verification.supportsClaim &&
-        verification.confidence >= 0.45 &&
-        row.similarity >= SIMILARITY_PREFERRED) ||
-      (Boolean(verification.correction) && verification.confidence >= 0.5) ||
-      // Existence + topical overlap: accept without demanding high LLM confidence.
-      (identity &&
+        verification.matches &&
+        verification.confidence >= (ctx.requireStrongMatch || doctrines.length ? 0.55 : 0.45)) ||
+      (!doctrines.length &&
         verification.supportsClaim &&
+        verification.confidence >= 0.62 &&
+        row.similarity >= SIMILARITY_PREFERRED) ||
+      (!doctrines.length &&
+        verification.supportsClaim &&
+        verification.confidence >= 0.55 &&
+        row.similarity >= SIMILARITY_PREFERRED &&
+        overlap >= PASSAGE_OVERLAP_PREFERRED) ||
+      (!doctrines.length &&
+        identity &&
+        verification.supportsClaim &&
+        verification.matches &&
         row.similarity >= EXISTENCE_SOFT_SIM &&
-        overlap >= EXISTENCE_SOFT_OVERLAP) ||
-      (identity &&
-        row.similarity >= 0.62 &&
-        overlap >= 0.5 &&
-        verification.confidence >= 0.4)
+        overlap >= EXISTENCE_SOFT_OVERLAP)
 
     if (!softAccept) {
       bestRejected = { ...row, candidate: { ...row.candidate, record } }
@@ -1039,24 +1250,25 @@ async function verifyPool(pool: RankedCandidate[], ctx: VerifyContext): Promise<
     let confirmConfidence = verification.confidence
     const isAcademic = ACADEMIC_PROVIDERS.has(row.candidate.provider)
     const skipConfirm =
-      (identity &&
+      !ctx.requireStrongMatch &&
+      !doctrines.length &&
+      ((identity &&
         verification.supportsClaim &&
+        verification.matches &&
         row.similarity >= SKIP_CONFIRM_SIMILARITY) ||
-      (identity && overlap >= PASSAGE_OVERLAP_PREFERRED && row.similarity >= 0.5) ||
-      (verification.matches && verification.confidence >= HIGH_CONFIDENCE_SKIP_CONFIRM) ||
-      (verification.matches &&
-        verification.supportsClaim &&
-        row.similarity >= SKIP_CONFIRM_SIMILARITY) ||
-      (verification.supportsClaim &&
-        verification.confidence >= 0.55 &&
-        row.similarity >= SKIP_CONFIRM_SIMILARITY) ||
-      (isAcademic &&
-        verification.supportsClaim &&
-        verification.confidence >= 0.5 &&
-        row.similarity >= SIMILARITY_PREFERRED) ||
-      (ctx.isBasic &&
-        verification.supportsClaim &&
-        row.similarity >= BASIC_SKIP_CONFIRM_SIMILARITY)
+        (verification.matches &&
+          verification.supportsClaim &&
+          verification.confidence >= HIGH_CONFIDENCE_SKIP_CONFIRM &&
+          row.similarity >= SKIP_CONFIRM_SIMILARITY) ||
+        (isAcademic &&
+          verification.matches &&
+          verification.supportsClaim &&
+          verification.confidence >= 0.55 &&
+          row.similarity >= SIMILARITY_PREFERRED) ||
+        (ctx.isBasic &&
+          verification.matches &&
+          verification.supportsClaim &&
+          row.similarity >= BASIC_SKIP_CONFIRM_SIMILARITY))
 
     if (!skipConfirm) {
       const confirmation = await confirmSourceMatch({
@@ -1134,6 +1346,8 @@ export async function findCitationForSentence(input: {
   onStage?: CitationStageReporter
   /** Generation-scoped OpenAlex / Perplexity cache (shared across sentences). */
   searchCache?: CitationSearchCache
+  /** User-pasted links resolved before search — preferred over discovery. */
+  providedSources?: SourceRecord[]
 }): Promise<SentenceCitationResult> {
   const stage = (s: CitationPipelineStage) => {
     try {
@@ -1199,29 +1413,36 @@ export async function findCitationForSentence(input: {
       .slice(0, 12)
       .join(' ')
 
-    const questionQuery =
-      claim.questionQuery?.trim() ||
-      (claim.claim ? `What evidence supports that ${claim.claim}?` : undefined)
     const semanticQuery =
       claim.semanticQuery?.trim() ||
+      claim.claim?.trim() ||
       claim.embeddingFocus?.trim() ||
-      claim.claim
+      claim.academicQuery?.trim()
+
+    const conceptFromAcademic = toConceptQuery(claim.academicQuery)
+    const conceptFromKeywords = toConceptQuery(keywordBundle)
 
     const academicQueries = uniqueQueries(
       MAX_ACADEMIC_QUERIES,
+      // Concept-first: rare stats match better without claim verbs / precise numbers.
+      ensurePlaceInQuery(conceptFromAcademic, places),
+      ensurePlaceInQuery(stripPreciseNumbers(claim.academicQuery), places),
       ensurePlaceInQuery(claim.academicQuery, places),
-      ensurePlaceInQuery(questionQuery ?? '', places),
-      ensurePlaceInQuery(keywordBundle, places),
+      ensurePlaceInQuery(conceptFromKeywords || keywordBundle, places),
+      ensurePlaceInQuery(stripPreciseNumbers(keywordBundle), places),
       ensurePlaceInQuery(claim.claim, places),
     )
     const webQueries = uniqueQueries(
       maxWebQueries,
       ensurePlaceInQuery(claim.webQuery, places),
-      ensurePlaceInQuery(questionQuery ?? '', places),
+      ensurePlaceInQuery(stripPreciseNumbers(claim.webQuery), places),
       ensurePlaceInQuery(keywordBundle, places),
       ensurePlaceInQuery(claim.claim, places),
     )
     const queryEmbedText = buildQueryEmbedText(input.sentence, claim, places)
+
+    const preferLegal =
+      input.settings.legal === true && input.entitlements.allowLegalDatabase
 
     const ctx: VerifyContext = {
       sentence: input.sentence,
@@ -1234,6 +1455,12 @@ export async function findCitationForSentence(input: {
       isBasic,
       exaUrlCache,
       onStage: stage,
+      doctrineTerms: extractDoctrineTerms(
+        input.sentence,
+        claim.claim,
+        claim.academicQuery,
+        ...claim.keywords,
+      ),
     }
 
     let bestRejected: RankedCandidate | null = null
@@ -1264,6 +1491,7 @@ export async function findCitationForSentence(input: {
         claimYears,
         claim.claim,
         claim.keywords,
+        preferLegal,
       )
       queryVec = rankedResult.queryVec
       const ranked = applyGeoBoost(rankedResult.ranked, places)
@@ -1280,6 +1508,7 @@ export async function findCitationForSentence(input: {
     }
 
     // Prefer resolving an in-text citation already present in the draft.
+    // Always verify before accepting — author+year search alone is too loose.
     if (existingCite && (existingCite.doi || (existingCite.authors.length && existingCite.year))) {
       stage('resolve')
       try {
@@ -1295,19 +1524,80 @@ export async function findCitationForSentence(input: {
             : cleanRecord.doi
               ? 'crossref'
               : 'openalex'
-          return finish({
-            status: 'done',
+          const resolveCandidate: CandidateSource = {
             provider,
-            similarity: 1,
             record: cleanRecord,
-            claim: claim.claim,
-            verificationConfidence: 0.9,
-            correction: null,
-            preserveExistingInText: sentenceHasExistingInTextCitation(input.sentence),
-          })
+            textForEmbed: buildOpenAlexEmbedText(cleanRecord),
+          }
+          const { pool } = await rankAndPool([resolveCandidate], queryVec)
+          const resolveCtx: VerifyContext = {
+            ...ctx,
+            requireStrongMatch: true,
+          }
+          const verdict = await verifyPool(pool.length ? pool : [{
+            candidate: resolveCandidate,
+            similarity: existingCite.doi ? 0.85 : 0.6,
+          }], resolveCtx)
+          if (verdict.success) {
+            return finish({
+              ...verdict.success,
+              provider: verdict.success.provider ?? provider,
+              preserveExistingInText: sentenceHasExistingInTextCitation(input.sentence),
+              verificationConfidence: Math.max(
+                verdict.success.verificationConfidence ?? 0.7,
+                existingCite.doi ? 0.85 : 0.7,
+              ),
+            })
+          }
+          bestRejected = verdict.bestRejected
+          lastRejectReason =
+            verdict.lastRejectReason ||
+            'The cited author/year did not resolve to a source that supports this claim.'
         }
       } catch {
         /* fall through to normal search */
+      }
+    }
+
+    // Prefer user-pasted links / DOIs over discovery search.
+    if (input.providedSources?.length) {
+      stage('resolve')
+      const providedCandidates: CandidateSource[] = input.providedSources.map((record, i) => ({
+        provider: (record.openAlexId
+          ? 'openalex'
+          : record.doi
+            ? 'crossref'
+            : 'exa') as CitationProvider,
+        record: { ...record, id: record.id || `provided-${i}` },
+        textForEmbed: buildOpenAlexEmbedText(record),
+      }))
+      const { pool } = await rankAndPool(providedCandidates)
+      if (pool.length) {
+        const verdict = await verifyPool(pool, ctx)
+        if (verdict.success) {
+          return finish({
+            ...verdict.success,
+            provider: verdict.success.provider ?? 'exa',
+            verificationConfidence: Math.max(verdict.success.verificationConfidence ?? 0.7, 0.75),
+          })
+        }
+        // Soft accept best provided match — user supplied the link.
+        const best = pool[0]
+        if (best && best.similarity >= 0.28) {
+          let record = best.candidate.record
+          if (record.doi && needsDoiEnrichment(record)) {
+            record = await enrichFromDoi(record)
+          }
+          return finish({
+            status: 'done',
+            provider: best.candidate.provider,
+            similarity: best.similarity,
+            record: normalizeSourceForCitation(record),
+            claim: claim.claim,
+            verificationConfidence: 0.72,
+            correction: null,
+          })
+        }
       }
     }
 
@@ -1338,6 +1628,20 @@ export async function findCitationForSentence(input: {
     // Academic path: hybrid OpenAlex keyword + semantic. Pro subject DBs when thin.
     if (runAcademic) {
       stage('academic')
+
+      // Legal essays: try CourtListener alone first so doctrine opinions beat noisy OpenAlex.
+      if (preferLegal) {
+        const legalFirst = await searchLegalCandidates(academicQueries, input.settings)
+        for (const candidate of legalFirst) triedKeys.add(candidateKey(candidate))
+        if (legalFirst.length) {
+          const { pool } = await rankAndPool(legalFirst, queryVec)
+          const verdict = await verifyPool(pool, ctx)
+          if (verdict.success) return finish(verdict.success)
+          bestRejected = verdict.bestRejected
+          lastRejectReason = verdict.lastRejectReason
+        }
+      }
+
       const oaCandidates = await searchOpenAlexCandidates(
         academicQueries,
         input.settings,
@@ -1348,8 +1652,8 @@ export async function findCitationForSentence(input: {
 
       const [medicalCandidates, legalCandidates] = await Promise.all([
         input.entitlements.allowPubMed &&
-        input.settings.medical === true &&
-        thinOpenAlex
+        (input.settings.medical === true || academicOnlySetting) &&
+        (thinOpenAlex || input.settings.medical === true)
           ? searchMedicalCandidates(academicQueries, input.settings, [
               input.sentence,
               claim.claim,
@@ -1358,17 +1662,16 @@ export async function findCitationForSentence(input: {
               ...claim.entities,
             ])
           : Promise.resolve([] as CandidateSource[]),
-        input.entitlements.allowLegalDatabase &&
-        input.settings.legal === true &&
-        thinOpenAlex
+        // Fill legal pool again when first pass was empty or we still need academic backup.
+        preferLegal
           ? searchLegalCandidates(academicQueries, input.settings)
           : Promise.resolve([] as CandidateSource[]),
       ])
 
       academicCandidates = dedupeCandidates([
+        ...legalCandidates,
         ...oaCandidates,
         ...medicalCandidates,
-        ...legalCandidates,
       ])
       for (const candidate of academicCandidates) triedKeys.add(candidateKey(candidate))
 
@@ -1379,6 +1682,38 @@ export async function findCitationForSentence(input: {
         bestRejected = verdict.bestRejected
         lastRejectReason = verdict.lastRejectReason
         void rankedResult
+
+        // Rescue: PubMed/Europe PMC with a concept-compressed query when OpenAlex near-missed.
+        if (
+          input.entitlements.allowPubMed &&
+          (academicOnlySetting || input.settings.medical === true)
+        ) {
+          const rescueQuery =
+            toConceptQuery(academicQueries[0]) ||
+            toConceptQuery(claim.academicQuery) ||
+            academicQueries[0]
+          if (rescueQuery) {
+            const rescue = (
+              await searchMedicalCandidates([rescueQuery], input.settings, [
+                input.sentence,
+                claim.claim,
+                rescueQuery,
+                ...claim.keywords,
+              ])
+            ).filter((candidate) => !triedKeys.has(candidateKey(candidate)))
+            for (const candidate of rescue) triedKeys.add(candidateKey(candidate))
+            if (rescue.length) {
+              academicCandidates = dedupeCandidates([...academicCandidates, ...rescue])
+              const rescueRanked = await rankAndPool(rescue, queryVec)
+              const rescueVerdict = await verifyPool(rescueRanked.pool, ctx)
+              if (rescueVerdict.success) return finish(rescueVerdict.success)
+              if (!bestRejected && rescueVerdict.bestRejected) {
+                bestRejected = rescueVerdict.bestRejected
+                lastRejectReason = rescueVerdict.lastRejectReason
+              }
+            }
+          }
+        }
       }
 
       // Only hard-stop academic path when the user forced Academic Only.
@@ -1456,8 +1791,12 @@ export async function findCitationForSentence(input: {
         ? 'real-time web and agentic web'
         : 'agentic web'
       const subjectBits = [
-        input.entitlements.allowPubMed ? 'medical database when applicable' : null,
-        input.entitlements.allowLegalDatabase ? 'legal database when applicable' : null,
+        input.entitlements.allowPubMed && input.settings.medical === true
+          ? 'medical database'
+          : null,
+        input.entitlements.allowLegalDatabase && input.settings.legal === true
+          ? 'legal database'
+          : null,
       ].filter(Boolean)
       const availableSearches =
         claimType === 'news'

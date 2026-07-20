@@ -35,7 +35,7 @@ export function LibrarySidebar({ open }: { open: boolean }) {
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search drafts…"
+            placeholder="Search Drafts…"
             aria-label="Search drafts"
           />
           {query ? (
