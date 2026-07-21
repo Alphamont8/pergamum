@@ -21,7 +21,7 @@ export async function signInWithOAuth(
       skipBrowserRedirect: false,
       queryParams: {
         access_type: 'offline',
-        prompt: 'consent',
+        // Do not force prompt=consent — it re-shows Google every time and can feel like a double login.
       },
     },
   })

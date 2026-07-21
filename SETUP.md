@@ -15,10 +15,25 @@ node scripts/seed-schools.mjs
 
 4. Auth → Providers:
    - Enable **Email**
-   - Enable **Google** (OAuth client ID/secret)
+   - Enable **Google** (OAuth client ID/secret from Google Cloud)
 5. Auth → URL configuration:
-   - Site URL: your app origin
+   - Site URL: your app origin (e.g. `https://pergamum.app`)
    - Redirect URLs: `{origin}/auth/callback`
+
+### Google sign-in branding
+
+Google shows two things during OAuth:
+
+1. **App name + logo** — from [Google Cloud Console](https://console.cloud.google.com/) → **APIs & Services** → **OAuth consent screen**:
+   - **App name:** `Pergamum`
+   - **App logo:** upload `public/brand/pergamum-logo.png` (square, ≥128×128)
+   - **User support email** and **Developer contact**
+   - **Authorized domains:** your production domain (e.g. `pergamum.app`) and `supabase.co`
+2. **“Continue to …”** — this domain is wherever Google redirects after sign-in. With Supabase Auth it is usually `your-project.supabase.co` unless you add a **Supabase custom auth domain** (e.g. `auth.pergamum.app` in Supabase → Project Settings → Custom Domains).
+
+Use your **own** Google OAuth client (not Supabase’s shared client) in Supabase → Auth → Providers → Google so the consent screen uses your branding.
+
+If login only works on the **second** attempt, confirm `{origin}/auth/callback` is in Supabase redirect URLs and that the callback route attaches session cookies to the redirect response (see `app/auth/callback/route.ts`).
 
 ## 2. Vercel AI Gateway
 
