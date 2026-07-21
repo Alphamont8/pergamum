@@ -1,4 +1,10 @@
 import { createServerClient } from '@supabase/ssr'
+import { handleAuthCallback } from '@/lib/supabase/auth-callback'
+import {
+  applyPendingCookies,
+  createSupabaseRequestClient,
+  type PendingCookie,
+} from '@/lib/supabase/request-client'
 import { NextResponse, type NextRequest } from 'next/server'
 
 /** Always public (no auth required). */
@@ -18,6 +24,12 @@ function isPublic(path: string) {
 export async function updateSession(request: NextRequest) {
   const path = request.nextUrl.pathname
 
+  // OAuth / magic-link callback: exchange code before any getUser() refresh logic.
+  // Running getUser() here can mutate PKCE verifier cookies and break the first login.
+  if (path === '/auth/callback') {
+    return handleAuthCallback(request)
+  }
+
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
@@ -31,26 +43,11 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  let supabaseResponse = NextResponse.next({ request })
+  const pendingCookies = new Map<string, PendingCookie>()
 
   let user = null
   try {
-    const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
-      cookies: {
-        getAll() {
-          return request.cookies.getAll()
-        },
-        setAll(
-          cookiesToSet: { name: string; value: string; options?: Record<string, unknown> }[],
-        ) {
-          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
-          supabaseResponse = NextResponse.next({ request })
-          cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options),
-          )
-        },
-      },
-    })
+    const supabase = createSupabaseRequestClient(request, pendingCookies)
 
     const {
       data: { user: authUser },
@@ -60,13 +57,16 @@ export async function updateSession(request: NextRequest) {
     /* continue without session */
   }
 
+  const nextWithCookies = () =>
+    applyPendingCookies(NextResponse.next({ request }), pendingCookies)
+
   // Logged-in users leaving login → home (or redirect param)
   if (user && (path === '/login' || path === '/signup')) {
     const url = request.nextUrl.clone()
     const next = url.searchParams.get('redirect') || '/'
     url.pathname = next.startsWith('/') ? next : '/'
     url.search = ''
-    return NextResponse.redirect(url)
+    return applyPendingCookies(NextResponse.redirect(url), pendingCookies)
   }
 
   // Everything except public auth routes requires sign-in
@@ -77,7 +77,7 @@ export async function updateSession(request: NextRequest) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     if (path !== '/') url.searchParams.set('redirect', path)
-    return NextResponse.redirect(url)
+    return applyPendingCookies(NextResponse.redirect(url), pendingCookies)
   }
 
   // Onboarding gate for authenticated users (skip public legal/auth routes)
@@ -106,7 +106,7 @@ export async function updateSession(request: NextRequest) {
       if (profile && profile.onboarding_complete === false) {
         const url = request.nextUrl.clone()
         url.pathname = '/onboarding'
-        return NextResponse.redirect(url)
+        return applyPendingCookies(NextResponse.redirect(url), pendingCookies)
       }
     } catch {
       /* allow through if profile lookup fails */
@@ -131,12 +131,12 @@ export async function updateSession(request: NextRequest) {
       if (profile?.onboarding_complete) {
         const url = request.nextUrl.clone()
         url.pathname = '/'
-        return NextResponse.redirect(url)
+        return applyPendingCookies(NextResponse.redirect(url), pendingCookies)
       }
     } catch {
       /* continue */
     }
   }
 
-  return supabaseResponse
+  return nextWithCookies()
 }
