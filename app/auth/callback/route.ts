@@ -3,6 +3,12 @@ import { syncProfileAvatarIfMissing } from '@/lib/auth/avatar'
 import { GUEST_COOKIE } from '@/lib/guest/session'
 import { NextResponse, type NextRequest } from 'next/server'
 
+type PendingCookie = {
+  name: string
+  value: string
+  options?: Record<string, unknown>
+}
+
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url)
   const code = searchParams.get('code')
@@ -20,9 +26,8 @@ export async function GET(request: NextRequest) {
   }
 
   // Session cookies must be written onto the redirect response itself.
-  // Using cookies() + a separate NextResponse.redirect() often drops them on the first login.
-  let redirectPath = next
-  let response = NextResponse.redirect(`${origin}${redirectPath}`)
+  // setAll can run more than once (chunked auth cookies); accumulate every batch.
+  const pendingCookies = new Map<string, PendingCookie>()
 
   const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
     cookies: {
@@ -32,11 +37,10 @@ export async function GET(request: NextRequest) {
       setAll(
         cookiesToSet: { name: string; value: string; options?: Record<string, unknown> }[],
       ) {
-        cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
-        response = NextResponse.redirect(`${origin}${redirectPath}`)
-        cookiesToSet.forEach(({ name, value, options }) =>
-          response.cookies.set(name, value, options),
-        )
+        cookiesToSet.forEach(({ name, value, options }) => {
+          request.cookies.set(name, value)
+          pendingCookies.set(name, { name, value, options })
+        })
       },
     },
   })
@@ -50,6 +54,7 @@ export async function GET(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
 
+  let redirectPath = next
   if (user) {
     const { createServiceClient } = await import('@/lib/supabase/server')
     const service = await createServiceClient()
@@ -65,15 +70,10 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  if (redirectPath !== next) {
-    const finalResponse = NextResponse.redirect(`${origin}${redirectPath}`)
-    response.cookies.getAll().forEach((cookie) => {
-      finalResponse.cookies.set(cookie.name, cookie.value)
-    })
-    finalResponse.cookies.set(GUEST_COOKIE, '', { path: '/', maxAge: 0 })
-    return finalResponse
-  }
-
+  const response = NextResponse.redirect(`${origin}${redirectPath}`)
+  pendingCookies.forEach(({ name, value, options }) => {
+    response.cookies.set(name, value, options)
+  })
   response.cookies.set(GUEST_COOKIE, '', { path: '/', maxAge: 0 })
   return response
 }

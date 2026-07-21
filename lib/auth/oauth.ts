@@ -19,10 +19,6 @@ export async function signInWithOAuth(
     options: {
       redirectTo: `${origin}/auth/callback?next=${encodeURIComponent(next)}`,
       skipBrowserRedirect: false,
-      queryParams: {
-        access_type: 'offline',
-        // Do not force prompt=consent — it re-shows Google every time and can feel like a double login.
-      },
     },
   })
 }
