@@ -46,6 +46,19 @@ export default function LoginForm() {
     }
   }, [errorParam])
 
+  useEffect(() => {
+    if (!supabase) return
+    let cancelled = false
+    void supabase.auth.getUser().then(({ data: { user } }) => {
+      if (cancelled || !user) return
+      router.replace(redirect.startsWith('/') ? redirect : '/')
+      router.refresh()
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [supabase, redirect, router])
+
   function storeReferralIfSignup() {
     if (mode !== 'signup' || !referralCode.trim()) return
     try {

@@ -1,7 +1,6 @@
 import { cookies } from 'next/headers'
 import { createServiceClient } from '@/lib/supabase/server'
-
-export const GUEST_COOKIE = 'pergamum_guest_sid'
+import { GUEST_COOKIE } from '@/lib/guest/constants'
 const GUEST_TTL_DAYS = 7
 
 export type GuestSession = {
