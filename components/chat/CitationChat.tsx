@@ -21,10 +21,12 @@ import {
   settingsMatchDefaults,
 } from '@/lib/composer/draft'
 import type { GenerationSettings, SourceRecency, SourceTier } from '@/types'
-import { AgentTimeline, type TimelineReasoning, type TimelineStep } from './AgentTimeline'
+import { AgentTimeline, type TimelineFeedMode, type TimelineReasoning, type TimelineStep } from './AgentTimeline'
 import { LiveEssayCanvas } from './LiveEssayCanvas'
 import type { ActivityLogEntry, BibChip, PossibleMatchChip } from './PipelineActivityRail'
+import { readApiErrorMessage, parseSseEventData } from '@/lib/http/apiError'
 import { alignSentencesToEssay, countWords } from '@/lib/essay/alignSentences'
+import { reasoningImpliesCitations } from '@/lib/format/agentReasoning'
 import { formatAnalysisReasoning } from '@/lib/format/agentReasoning'
 import {
   analyzeStepCopy,
@@ -628,7 +630,30 @@ export function CitationChat() {
         router.replace(`/login?redirect=${encodeURIComponent('/')}&error=session`)
         return
       }
-      const data = await res.json()
+      const analyzeBody = await res.text()
+      let data: {
+        code?: string
+        error?: string
+        generationId?: string
+        title?: string
+        reasoning?: string
+        sentences?: AnalyzedSentence[]
+        balance?: number
+        enough?: boolean
+      } = {}
+      try {
+        data = JSON.parse(analyzeBody) as typeof data
+      } catch {
+        if (!res.ok) {
+          const trimmed = analyzeBody.trim()
+          throw new Error(
+            trimmed && trimmed.length <= 400
+              ? trimmed
+              : 'We couldn\u2019t analyze your draft.',
+          )
+        }
+        throw new Error('We couldn\u2019t analyze your draft.')
+      }
       if (!res.ok) {
         if (data.code === 'word_limit') {
           setUpsell({ feature: 'words', detail: BASIC_MAX_WORDS.toLocaleString() })
@@ -638,6 +663,9 @@ export function CitationChat() {
         }
         throw new Error(data.error ?? 'We couldn\u2019t analyze your draft.')
       }
+      if (!data.generationId) {
+        throw new Error('We couldn\u2019t analyze your draft.')
+      }
       setGenerationId(data.generationId)
       const loadedSentences = alignSentencesToEssay(
         essay,
@@ -645,8 +673,12 @@ export function CitationChat() {
       )
       setSentences(loadedSentences)
       setCitesRequired(loadedSentences.length)
-      setBalance(data.balance)
-      setEnough(typeof data.balance === 'number' ? data.balance >= loadedSentences.length : data.enough)
+      setBalance(typeof data.balance === 'number' ? data.balance : 0)
+      setEnough(
+        typeof data.balance === 'number'
+          ? data.balance >= loadedSentences.length
+          : Boolean(data.enough),
+      )
       if (typeof data.title === 'string' && data.title.trim()) {
         setDraftTitle(data.title.trim())
         if (data.generationId) {
@@ -667,6 +699,11 @@ export function CitationChat() {
           ? formatAnalysisReasoning(data.reasoning.trim())
           : null
       setAnalysisReasoning(reasoning)
+      if (loadedSentences.length === 0 && reasoning && reasoningImpliesCitations(reasoning)) {
+        throw new Error(
+          "We found claims in your draft but couldn't match them to sentences. Try again or shorten your draft.",
+        )
+      }
       if (analyzeStartedAtRef.current) {
         setAnalyzeDurationSec(
           Math.max(1, Math.round((Date.now() - analyzeStartedAtRef.current) / 1000)),
@@ -791,9 +828,15 @@ export function CitationChat() {
         body: JSON.stringify({ generationId }),
       })
 
-      if (!res.ok || !res.body) {
-        const data = await res.json().catch(() => ({}))
-        throw new Error(data.error ?? 'Citation generation didn\u2019t finish.')
+      if (!res.ok) {
+        throw new Error(await readApiErrorMessage(res, 'Citation generation didn\u2019t finish.'))
+      }
+      if (!res.body) {
+        throw new Error('Citation generation didn\u2019t finish.')
+      }
+      const contentType = res.headers.get('content-type') ?? ''
+      if (!contentType.includes('text/event-stream')) {
+        throw new Error(await readApiErrorMessage(res, 'Citation generation didn\u2019t finish.'))
       }
 
       const reader = res.body.getReader()
@@ -816,7 +859,7 @@ export function CitationChat() {
             if (line.startsWith('data:')) dataLine = line.slice(5).trim()
           }
           if (!dataLine) continue
-          const data = JSON.parse(dataLine) as Record<string, unknown>
+          const data = parseSseEventData(dataLine)
 
           if (event === 'status') {
             setStatusMessage(String(data.message ?? ''))
@@ -1110,26 +1153,31 @@ export function CitationChat() {
       const started = analyzeStartedAtRef.current
       const elapsedMs = started && liveClockMs ? Math.max(0, liveClockMs - started) : 0
       const secs = Math.floor(elapsedMs / 1000)
-      return { label: `Analyzing draft · ${secs}s`, busy: true }
+      const latest = activityLog[activityLog.length - 1]
+      return {
+        label: `Analyzing · ${secs}s`,
+        busy: true,
+        detail: latest?.message || statusMessage || 'Reading your draft…',
+      }
     }
-    if (analyzeDurationSec != null) {
+    if (phase === 'quoted' && analyzeDurationSec != null && sentences.length === 0) {
       return { label: `Analyzed draft for ${analyzeDurationSec}s` }
     }
     return null
-  }, [analyzeDurationSec, liveClockMs, phase])
+  }, [activityLog, analyzeDurationSec, liveClockMs, phase, sentences.length, statusMessage])
+
+  const timelineFeedMode = useMemo((): TimelineFeedMode => {
+    if (phase === 'analyzing') return 'analyzing'
+    if (phase === 'generating') return 'generating'
+    return 'review'
+  }, [phase])
 
   const timelineSteps = useMemo((): TimelineStep[] => {
-    const steps: TimelineStep[] = activityLog.map((log, i) => ({
-      id: log.id,
-      message: log.message,
-      detail: log.detail,
-      stage: log.stage,
-      sentenceIndex: log.sentenceIndex,
-      at: log.at,
-      busy: phase === 'analyzing' || phase === 'generating' ? i === activityLog.length - 1 : false,
-    }))
+    if (phase === 'analyzing' || phase === 'generating') return []
 
-    if (phase === 'theater_done' && !steps.some((s) => s.message === feedDoneCopy().message)) {
+    const steps: TimelineStep[] = []
+
+    if (phase === 'theater_done') {
       const done = feedDoneCopy()
       steps.push({
         id: 'done-result',
@@ -1150,8 +1198,22 @@ export function CitationChat() {
       })
     }
 
+    if (phase === 'quoted' && analysisReasoning) {
+      const resultStep = analyzeStepCopy('result', {
+        count: sentences.length,
+        reasoning: analysisReasoning,
+      })
+      steps.push({
+        id: 'analyze-result',
+        message: resultStep.message,
+        detail: resultStep.detail,
+        stage: 'analyze',
+        at: Date.now(),
+      })
+    }
+
     return steps
-  }, [activityLog, error, phase])
+  }, [analysisReasoning, error, phase, sentences.length])
 
   const onViewDraft = useCallback(() => {
     if (!generationId) return
@@ -1316,6 +1378,7 @@ export function CitationChat() {
               <AgentTimeline
                 steps={timelineSteps}
                 reasoning={timelineReasoning}
+                feedMode={timelineFeedMode}
                 liveClockMs={liveClockMs ?? undefined}
                 sentences={sentences.map((s) => ({ index: s.index, text: s.text }))}
                 live={theaterLive}

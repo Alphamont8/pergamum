@@ -38,7 +38,7 @@ export async function GET() {
       )
       .eq('user_id', user.id)
       .maybeSingle(),
-    supabase.from('profiles').select('stripe_customer_id, cites_balance, pro_cites_balance, pro_trial_started_at, pro_trial_ends_at, plan_tier').eq('id', user.id).maybeSingle(),
+    supabase.from('profiles').select('billing_customer_id, cites_balance, pro_cites_balance, pro_trial_started_at, pro_trial_ends_at, plan_tier').eq('id', user.id).maybeSingle(),
     supabase
       .from('cites_ledger')
       .select('delta, created_at')
@@ -89,7 +89,7 @@ export async function GET() {
           createdAt: lastProGrantRow.created_at,
         }
       : null,
-    hasBillingAccount: Boolean(profile?.stripe_customer_id),
+    hasBillingAccount: Boolean(profile?.billing_customer_id),
     trial,
     subscription: subscription
       ? {

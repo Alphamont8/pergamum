@@ -34,7 +34,7 @@ export default async function UpgradePage({
         citesBalance: profile.citesBalance,
         permanentCitesBalance: profile.permanentCitesBalance,
         proCitesBalance: profile.proCitesBalance,
-        hasBillingAccount: Boolean(profile.stripeCustomerId),
+        hasBillingAccount: Boolean(profile.billingCustomerId),
         trial,
         subscription: subscription
           ? {

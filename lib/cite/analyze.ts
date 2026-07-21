@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { complete, completeStructured } from '@/lib/ai/provider'
+import { completeStructured } from '@/lib/ai/provider'
 import { locateSentenceInEssay } from '@/lib/essay/alignSentences'
 import {
   ANALYZE_ESSAY_SYSTEM,
@@ -8,6 +8,7 @@ import {
   VERIFY_SOURCE_SYSTEM,
 } from '@/lib/ai/prompts'
 import type { GenerationSettings } from '@/types'
+import { reasoningImpliesCitations } from '@/lib/format/agentReasoning'
 import { mergeExistingCitation } from '@/lib/cite/existingCitation'
 import {
   getCachedClaimQuery,
@@ -19,11 +20,47 @@ import {
 export const claimTypeSchema = z.enum(['academic', 'news', 'mixed'])
 export type ClaimType = z.infer<typeof claimTypeSchema>
 
+/** Coerce model quirks: object maps, single strings, or null → string[]. */
+function coerceStringList(value: unknown): string[] {
+  if (value == null) return []
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => {
+        if (typeof item === 'string') return item
+        if (item == null) return ''
+        if (typeof item === 'number' || typeof item === 'boolean') return String(item)
+        if (typeof item === 'object') return Object.values(item as Record<string, unknown>).map(String).join(' ')
+        return ''
+      })
+      .map((s) => s.trim())
+      .filter(Boolean)
+  }
+  if (typeof value === 'string') return value.trim() ? [value.trim()] : []
+  if (typeof value === 'object') {
+    return Object.values(value as Record<string, unknown>)
+      .map((v) => (typeof v === 'string' ? v : v == null ? '' : String(v)))
+      .map((s) => s.trim())
+      .filter(Boolean)
+  }
+  return []
+}
+
+const stringListSchema = z.preprocess(coerceStringList, z.array(z.string()))
+
+const claimTypeField = z.preprocess((value) => {
+  if (value === 'academic' || value === 'news' || value === 'mixed') return value
+  if (typeof value === 'string') {
+    const lower = value.trim().toLowerCase()
+    if (lower === 'academic' || lower === 'news' || lower === 'mixed') return lower
+  }
+  return 'mixed'
+}, claimTypeSchema)
+
 export const claimQuerySchema = z.object({
   claim: z.string().min(1),
-  keywords: z.array(z.string()).min(1).max(12),
-  entities: z.array(z.string()).max(8).default([]),
-  dataPoints: z.array(z.string()).max(8).default([]),
+  keywords: stringListSchema.pipe(z.array(z.string()).min(1).max(12)),
+  entities: stringListSchema.pipe(z.array(z.string()).max(8)).default([]),
+  dataPoints: stringListSchema.pipe(z.array(z.string()).max(8)).default([]),
   academicQuery: z.string().min(1),
   webQuery: z.string().min(1),
   embeddingFocus: z.string().min(1),
@@ -40,26 +77,82 @@ const existingCitationSchema = z
   .object({
     raw: z.string().optional(),
     form: z.enum(['parenthetical', 'narrative', 'doi', 'numeric']).optional(),
-    authors: z.array(z.string()).max(4).optional(),
-    year: z.string().optional(),
+    authors: stringListSchema.pipe(z.array(z.string()).max(4)).optional(),
+    year: z.preprocess((v) => (v == null ? undefined : String(v)), z.string().optional()),
     doi: z.string().optional(),
-    number: z.number().int().positive().optional(),
+    number: z.preprocess((v) => {
+      if (typeof v === 'number') return v
+      if (typeof v === 'string' && v.trim()) return Number(v)
+      return v
+    }, z.number().int().positive().optional()),
   })
   .nullable()
   .optional()
 
+const optionalNonEmptyString = z.preprocess((value) => {
+  if (typeof value !== 'string') return undefined
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : undefined
+}, z.string().min(1).optional())
+
+function pickString(obj: Record<string, unknown>, keys: string[]): string | undefined {
+  for (const key of keys) {
+    const value = obj[key]
+    if (typeof value === 'string' && value.trim()) return value.trim()
+  }
+  return undefined
+}
+
+/** Normalize alternate model field names and string-only sentence entries. */
+function normalizeRawSentenceItem(item: unknown, position: number): Record<string, unknown> | null {
+  if (typeof item === 'string' && item.trim()) {
+    return { index: position, text: item.trim() }
+  }
+  if (!item || typeof item !== 'object') return null
+  const raw = item as Record<string, unknown>
+  const text = pickString(raw, [
+    'text',
+    'sentence',
+    'sentenceText',
+    'sentence_text',
+    'essaySentence',
+    'essay_sentence',
+    'original',
+    'content',
+    'quote',
+    'passage',
+  ])
+  const claim = pickString(raw, ['claim', 'claimText', 'claim_text'])
+  return {
+    ...raw,
+    index: raw.index ?? position,
+    ...(text ? { text, sentence: raw.sentence ?? text } : {}),
+    ...(claim ? { claim } : {}),
+  }
+}
+
+function preprocessSentenceList(value: unknown): unknown[] {
+  if (!Array.isArray(value)) return []
+  return value
+    .map((item, i) => normalizeRawSentenceItem(item, i))
+    .filter((item): item is Record<string, unknown> => item != null)
+}
+
 const sentenceAnalyzeSchema = z.object({
-  index: z.number().int().nonnegative(),
+  index: z.preprocess((v) => {
+    if (typeof v === 'string' && v.trim()) return Number(v)
+    return v
+  }, z.number().int().nonnegative()),
   /** Exact essay span; may be missing from flaky model output — recovered below. */
-  text: z.string().min(1).optional(),
-  sentence: z.string().min(1).optional(),
+  text: optionalNonEmptyString,
+  sentence: optionalNonEmptyString,
   reason: z.string().optional(),
   /** Routes search: academic DBs only, news/web first, or full cascade. */
-  claimType: claimTypeSchema.default('mixed'),
+  claimType: claimTypeField.default('mixed'),
   claim: z.string().optional(),
-  keywords: z.array(z.string()).optional(),
-  entities: z.array(z.string()).optional(),
-  dataPoints: z.array(z.string()).optional(),
+  keywords: stringListSchema.optional(),
+  entities: stringListSchema.optional(),
+  dataPoints: stringListSchema.optional(),
   academicQuery: z.string().optional(),
   webQuery: z.string().optional(),
   embeddingFocus: z.string().optional(),
@@ -70,11 +163,52 @@ const sentenceAnalyzeSchema = z.object({
 })
 
 export const analyzeSchema = z.object({
-  medical: z.boolean().default(false),
-  legal: z.boolean().default(false),
+  medical: z.preprocess((v) => v === true || v === 'true', z.boolean()).default(false),
+  legal: z.preprocess((v) => v === true || v === 'true', z.boolean()).default(false),
   /** Model rationale for claim selection and query generalization (shown in UI). */
-  reasoning: z.string().default(''),
-  sentences: z.array(sentenceAnalyzeSchema),
+  reasoning: z.preprocess((v) => (typeof v === 'string' ? v : ''), z.string()).default(''),
+  sentences: z.preprocess(preprocessSentenceList, z.array(sentenceAnalyzeSchema)),
+})
+
+/** Minimal schema used when the full analysis JSON is truncated or malformed. */
+const leanAnalyzeSchema = z.object({
+  medical: z.preprocess((v) => v === true || v === 'true', z.boolean()).default(false),
+  legal: z.preprocess((v) => v === true || v === 'true', z.boolean()).default(false),
+  reasoning: z.preprocess((v) => (typeof v === 'string' ? v : ''), z.string()).default(''),
+  sentences: z.preprocess(
+    preprocessSentenceList,
+    z.array(
+    z.object({
+      index: z.preprocess((val) => {
+        if (typeof val === 'string' && val.trim()) return Number(val)
+        return val
+      }, z.number().int().nonnegative()),
+      text: optionalNonEmptyString,
+      sentence: optionalNonEmptyString,
+      claim: z.string().optional(),
+      claimType: claimTypeField.default('mixed'),
+      reason: z.string().optional(),
+      existingCitation: existingCitationSchema,
+    }),
+    ),
+  ),
+})
+
+const compactSentenceListSchema = z.object({
+  sentences: z.preprocess(
+    preprocessSentenceList,
+    z.array(
+      z.object({
+        index: z.preprocess((val) => {
+          if (typeof val === 'string' && val.trim()) return Number(val)
+          return val
+        }, z.number().int().nonnegative()),
+        text: z.string().min(1),
+        claimType: claimTypeField.default('mixed'),
+        claim: z.string().optional(),
+      }),
+    ),
+  ),
 })
 
 export type AnalyzedSentence = z.infer<typeof sentenceAnalyzeSchema> & { text: string }
@@ -198,7 +332,68 @@ function recoverSentenceText(
     if (located) return located
     if (essay.includes(candidate.trim())) return candidate.trim()
   }
-  return candidates[0]?.trim() || null
+  // Prefer a located span; only fall back to raw claim text when nothing maps to the essay.
+  return null
+}
+
+function materializeAnalyzedSentences(
+  essay: string,
+  rawSentences: Array<z.infer<typeof sentenceAnalyzeSchema>>,
+  settings: GenerationSettings,
+): AnalyzedSentence[] {
+  const sentences: AnalyzedSentence[] = []
+  for (const s of rawSentences) {
+    const text = recoverSentenceText(essay, s)
+    if (!text) continue
+    const claimType = preferNewsClaimType(
+      normalizeClaimType(s.claimType, settings.sourceTier),
+      text,
+      settings.sourceTier,
+    )
+    const existingCitation = mergeExistingCitation(s.existingCitation ?? null, text)
+    const normalized: AnalyzedSentence = {
+      ...s,
+      text,
+      claimType,
+      existingCitation: existingCitation ?? s.existingCitation ?? null,
+    }
+    const cq = claimQueryFromAnalyzed(normalized)
+    if (cq) seedClaimQuery(text, cq)
+    sentences.push(normalized)
+  }
+  return sentences
+}
+
+async function retryCompactSentenceAnalyze(
+  essay: string,
+  settings: GenerationSettings,
+): Promise<AnalyzedSentence[]> {
+  const userContent = `Settings:
+- Prefer academic sources: ${settings.sourceTier === 'academic' ? 'yes, academic only' : 'academic preferred but news/web ok'}
+- Recency preference: ${settings.recency}
+
+Essay:
+"""
+${essay}
+"""`
+
+  const compact = await completeStructured(
+    compactSentenceListSchema,
+    [{ role: 'user', content: userContent }],
+    {
+      system: `You identify essay sentences that need citations. Return JSON only:
+{ "sentences": [ { "index": 0, "text": "<exact sentence copied from the essay>" } ] }
+
+Rules:
+- Copy each sentence exactly from the essay (same wording and punctuation).
+- Include every evidence-backed factual claim; skip opinions, plans, and thesis framing.
+- Do not paraphrase. Do not add fields beyond index and text.`,
+      temperature: 0.1,
+      maxTokens: 8192,
+    },
+  )
+
+  return materializeAnalyzedSentences(essay, compact.sentences, settings)
 }
 
 export async function analyzeEssayForCitations(
@@ -222,45 +417,46 @@ ${essay}
       {
         system: ANALYZE_ESSAY_SYSTEM,
         temperature: 0.2,
-        maxTokens: 4500,
+        // Long essays emit large JSON; truncation was causing analyze failures.
+        maxTokens: 8192,
       },
     )
-  } catch {
-    // Second chance: plain completion + JSON salvage.
-    try {
-      const text = await complete([{ role: 'user', content: userContent }], {
-        system: ANALYZE_ESSAY_SYSTEM,
-        temperature: 0.1,
-        maxTokens: 4500,
-      })
-      const jsonMatch = text.match(/\{[\s\S]*\}/)
-      if (!jsonMatch) throw new Error('no json')
-      result = analyzeSchema.parse(JSON.parse(jsonMatch[0]))
-    } catch {
-      result = { medical: false, legal: false, reasoning: '', sentences: [] }
+  } catch (fullErr) {
+    console.warn(
+      '[analyze] full schema failed, trying lean schema:',
+      fullErr instanceof Error ? fullErr.message : fullErr,
+    )
+    const lean = await completeStructured(
+      leanAnalyzeSchema,
+      [{ role: 'user', content: userContent }],
+      {
+        system: `${ANALYZE_ESSAY_SYSTEM}
+
+If output length is a concern, prefer a compact JSON shape: medical, legal, reasoning, and sentences with index, text, claimType, claim, reason only.`,
+        temperature: 0.15,
+        maxTokens: 8192,
+      },
+    )
+    result = {
+      medical: lean.medical,
+      legal: lean.legal,
+      reasoning: lean.reasoning,
+      sentences: lean.sentences,
     }
   }
 
   const inferred = inferSubjectFlags(essay)
-  const sentences: AnalyzedSentence[] = []
-  for (const s of result.sentences) {
-    const text = recoverSentenceText(essay, s)
-    if (!text) continue
-    const claimType = preferNewsClaimType(
-      normalizeClaimType(s.claimType, settings.sourceTier),
-      text,
-      settings.sourceTier,
+  let sentences = materializeAnalyzedSentences(essay, result.sentences, settings)
+
+  if (sentences.length === 0 && reasoningImpliesCitations(result.reasoning ?? '')) {
+    console.warn('[analyze] reasoning implies citations but sentence list was empty; retrying compact list')
+    sentences = await retryCompactSentenceAnalyze(essay, settings)
+  }
+
+  if (sentences.length === 0 && reasoningImpliesCitations(result.reasoning ?? '')) {
+    throw new Error(
+      "We found claims in your draft but couldn't match them to sentences. Try again or shorten your draft.",
     )
-    const existingCitation = mergeExistingCitation(s.existingCitation ?? null, text)
-    const normalized: AnalyzedSentence = {
-      ...s,
-      text,
-      claimType,
-      existingCitation: existingCitation ?? s.existingCitation ?? null,
-    }
-    const cq = claimQueryFromAnalyzed(normalized)
-    if (cq) seedClaimQuery(text, cq)
-    sentences.push(normalized)
   }
 
   // Persist claim queries in background (best-effort).
@@ -343,8 +539,8 @@ export const verifySchema = z.object({
   matches: z.boolean(),
   confidence: z.number().min(0).max(1),
   supportsClaim: z.boolean(),
-  evidenceSnippet: z.string().nullable(),
-  correction: z.string().nullable(),
+  evidenceSnippet: z.string().optional(),
+  correction: z.string().optional(),
   rationale: z.string().optional(),
 })
 
@@ -382,12 +578,13 @@ export async function verifySentenceAgainstSource(input: {
 
   // Order for implicit caching across candidate sources for the same sentence:
   // system (static) → claim context (stable per sentence) → source payload (unique, last).
-  return completeStructured(
-    verifySchema,
-    [
-      {
-        role: 'user',
-        content: `Suggestions enabled: ${input.suggestCorrections ? 'true' : 'false'}
+  try {
+    const raw = await completeStructured(
+      verifySchema,
+      [
+        {
+          role: 'user',
+          content: `Suggestions enabled: ${input.suggestCorrections ? 'true' : 'false'}
 
 Claim restatement (PRIMARY — judge support against this):
 """
@@ -413,14 +610,25 @@ Abstract/excerpt${abstract ? '' : ' (empty — you may still match from a clearl
 ${abstract.slice(0, 1200) || '(none provided)'}
 """
 ${highlights ? `Highlights:\n- ${highlights}` : ''}`,
+        },
+      ],
+      {
+        system: VERIFY_SOURCE_SYSTEM,
+        temperature: 0.1,
+        maxTokens: 800,
       },
-    ],
-    {
-      system: VERIFY_SOURCE_SYSTEM,
-      temperature: 0.1,
-      maxTokens: 800,
-    },
-  )
+    )
+    return raw
+  } catch {
+    return {
+      matches: false,
+      confidence: 0,
+      supportsClaim: false,
+      evidenceSnippet: undefined,
+      correction: undefined,
+      rationale: 'Verification skipped due to a model response error.',
+    }
+  }
 }
 
 /** Second-pass confirmation after an initial match. */

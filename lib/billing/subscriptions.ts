@@ -1,7 +1,6 @@
-import type Stripe from 'stripe'
 import { createServiceClient } from '@/lib/supabase/server'
 import { creditCitesOnce } from '@/lib/cites/ledger'
-import { FREE_PLAN_TIER, planFromPriceId, PRO_MONTHLY_CITES } from '@/lib/billing/plans'
+import { FREE_PLAN_TIER, planFromVariantId, PRO_MONTHLY_CITES } from '@/lib/billing/plans'
 import {
   clearActiveProFeaturesTrial,
   consumeProTrialOpportunity,
@@ -10,10 +9,29 @@ import type { BillingInterval, PlanTier, SubscriptionStatus } from '@/types'
 
 const PRO_ACCESS_STATUSES = new Set<SubscriptionStatus>(['active', 'trialing', 'past_due'])
 
+/** Lemon Squeezy subscription attributes we need for sync. */
+export interface LemonSubscriptionAttrs {
+  id: string
+  customerId: string
+  variantId: string
+  status: string
+  cancelled: boolean
+  renewsAt: string | null
+  endsAt: string | null
+  createdAt: string
+  trialEndsAt: string | null
+  /** From checkout custom data when present. */
+  custom?: {
+    supabase_user_id?: string
+    plan?: string
+    billing_interval?: string
+  }
+}
+
 export interface SyncedSubscription {
   userId: string
-  stripeSubscriptionId: string
-  stripeCustomerId: string
+  billingSubscriptionId: string
+  billingCustomerId: string
   planTier: Exclude<PlanTier, 'basic'>
   billingInterval: BillingInterval
   status: SubscriptionStatus
@@ -22,64 +40,116 @@ export interface SyncedSubscription {
   cancelAtPeriodEnd: boolean
 }
 
-export async function syncStripeSubscription(
-  subscription: Stripe.Subscription,
-): Promise<SyncedSubscription | null> {
-  const item = subscription.items.data[0]
-  if (!item) return null
+/**
+ * Map Lemon Squeezy status → our SubscriptionStatus.
+ * LS `cancelled` with a future ends_at stays "active" + cancel_at_period_end (Stripe-like).
+ */
+export function mapLemonStatus(
+  attrs: Pick<LemonSubscriptionAttrs, 'status' | 'cancelled' | 'endsAt'>,
+): { status: SubscriptionStatus; cancelAtPeriodEnd: boolean } {
+  const endsAtMs = attrs.endsAt ? new Date(attrs.endsAt).getTime() : 0
+  const inGrace = attrs.status === 'cancelled' && endsAtMs > Date.now()
 
-  const mapped = planFromPriceId(item.price.id)
-  const metadataPlan = subscription.metadata.plan
-  const metadataInterval = subscription.metadata.billing_interval
+  if (inGrace) {
+    return { status: 'active', cancelAtPeriodEnd: true }
+  }
+
+  switch (attrs.status) {
+    case 'on_trial':
+      return { status: 'trialing', cancelAtPeriodEnd: false }
+    case 'active':
+      return { status: 'active', cancelAtPeriodEnd: Boolean(attrs.cancelled) }
+    case 'past_due':
+      return { status: 'past_due', cancelAtPeriodEnd: false }
+    case 'paused':
+      return { status: 'paused', cancelAtPeriodEnd: false }
+    case 'unpaid':
+      return { status: 'unpaid', cancelAtPeriodEnd: false }
+    case 'cancelled':
+    case 'expired':
+      return { status: 'canceled', cancelAtPeriodEnd: true }
+    default:
+      return { status: 'canceled', cancelAtPeriodEnd: true }
+  }
+}
+
+/**
+ * Period bounds from Lemon fields.
+ * - End: ends_at (cancel grace) or renews_at (next invoice)
+ * - Start: optional override (e.g. invoice created_at on payment), else created_at / inferred
+ */
+export function lemonPeriodBounds(
+  attrs: LemonSubscriptionAttrs,
+  interval: BillingInterval,
+  periodStartOverride?: string,
+): { start: string; end: string } {
+  const end =
+    attrs.endsAt ||
+    attrs.renewsAt ||
+    attrs.trialEndsAt ||
+    addInterval(attrs.createdAt, interval)
+
+  if (periodStartOverride) {
+    return { start: periodStartOverride, end }
+  }
+
+  if (attrs.renewsAt && !attrs.endsAt) {
+    return { start: subtractInterval(attrs.renewsAt, interval), end }
+  }
+
+  return { start: attrs.createdAt, end }
+}
+
+export async function syncLemonSubscription(
+  attrs: LemonSubscriptionAttrs,
+  options?: { periodStartOverride?: string },
+): Promise<SyncedSubscription | null> {
+  const mapped = planFromVariantId(attrs.variantId)
+  const metadataPlan = attrs.custom?.plan
+  const metadataInterval = attrs.custom?.billing_interval
   const planTier =
     mapped?.planTier ?? (metadataPlan === 'pro' || metadataPlan === 'plus' ? metadataPlan : null)
   const billingInterval =
     mapped?.billingInterval ??
-    (metadataInterval === 'month' || metadataInterval === 'year'
-      ? metadataInterval
-      : item.price.recurring?.interval === 'month' || item.price.recurring?.interval === 'year'
-        ? item.price.recurring.interval
-        : null)
+    (metadataInterval === 'month' || metadataInterval === 'year' ? metadataInterval : null)
 
   if (!planTier || !billingInterval) return null
-
-  const stripeCustomerId =
-    typeof subscription.customer === 'string'
-      ? subscription.customer
-      : subscription.customer?.id
-  if (!stripeCustomerId) return null
+  if (!attrs.customerId) return null
 
   const service = await createServiceClient()
-  let userId = subscription.metadata.supabase_user_id
+  let userId = attrs.custom?.supabase_user_id
 
   if (!userId) {
     const { data: profile } = await service
       .from('profiles')
       .select('id')
-      .eq('stripe_customer_id', stripeCustomerId)
+      .eq('billing_customer_id', String(attrs.customerId))
       .maybeSingle()
     userId = profile?.id
   }
 
   if (!userId) return null
 
-  const currentPeriodStart = toIso(item.current_period_start)
-  const currentPeriodEnd = toIso(item.current_period_end)
-  const status = subscription.status as SubscriptionStatus
+  const { status, cancelAtPeriodEnd } = mapLemonStatus(attrs)
+  const { start: currentPeriodStart, end: currentPeriodEnd } = lemonPeriodBounds(
+    attrs,
+    billingInterval,
+    options?.periodStartOverride,
+  )
   const now = new Date().toISOString()
 
   const { error: subscriptionError } = await service.from('subscriptions').upsert(
     {
       user_id: userId,
-      stripe_subscription_id: subscription.id,
-      stripe_customer_id: stripeCustomerId,
+      billing_subscription_id: String(attrs.id),
+      billing_customer_id: String(attrs.customerId),
       plan_tier: planTier,
       billing_interval: billingInterval,
       status,
       monthly_cites: PRO_MONTHLY_CITES,
       current_period_start: currentPeriodStart,
       current_period_end: currentPeriodEnd,
-      cancel_at_period_end: subscription.cancel_at_period_end,
+      cancel_at_period_end: cancelAtPeriodEnd,
       updated_at: now,
     },
     { onConflict: 'user_id' },
@@ -94,7 +164,6 @@ export async function syncStripeSubscription(
 
   const hasProAccess = planTier === 'pro' && PRO_ACCESS_STATUSES.has(status)
 
-  // Preserve an active pack-purchase features trial if Stripe access is not active.
   const { data: trialProfile } = await service
     .from('profiles')
     .select('pro_trial_ends_at')
@@ -109,11 +178,13 @@ export async function syncStripeSubscription(
     : trialStillActive
       ? 'pro'
       : FREE_PLAN_TIER
-  const profileUpdates: Record<string, unknown> = { plan_tier: nextPlanTier }
+  const profileUpdates: Record<string, unknown> = {
+    plan_tier: nextPlanTier,
+    billing_customer_id: String(attrs.customerId),
+  }
 
   if (nextPlanTier === FREE_PLAN_TIER) {
     profileUpdates.default_suggest_corrections = false
-    // Unused monthly Pro allotment expires when paid Pro access ends.
     profileUpdates.pro_cites_balance = 0
   } else if (existingProfile?.plan_tier !== 'pro') {
     profileUpdates.default_suggest_corrections = true
@@ -126,21 +197,20 @@ export async function syncStripeSubscription(
   if (profileError) throw new Error(profileError.message)
 
   if (hasProAccess) {
-    // Paid Pro consumes the one-time trial opportunity and clears any timed window.
     await consumeProTrialOpportunity(userId)
     await clearActiveProFeaturesTrial(userId)
   }
 
   return {
     userId,
-    stripeSubscriptionId: subscription.id,
-    stripeCustomerId,
+    billingSubscriptionId: String(attrs.id),
+    billingCustomerId: String(attrs.customerId),
     planTier,
     billingInterval,
     status,
     currentPeriodStart,
     currentPeriodEnd,
-    cancelAtPeriodEnd: subscription.cancel_at_period_end,
+    cancelAtPeriodEnd,
   }
 }
 
@@ -153,7 +223,7 @@ export async function grantPaidPeriodCites(subscription: SyncedSubscription): Pr
   }
 
   const referenceId = grantReference(
-    subscription.stripeSubscriptionId,
+    subscription.billingSubscriptionId,
     subscription.currentPeriodStart,
   )
   const granted = await creditCitesOnce({
@@ -173,7 +243,7 @@ export async function grantPaidPeriodCites(subscription: SyncedSubscription): Pr
   const { error } = await service
     .from('subscriptions')
     .update({ next_cites_grant_at: nextGrantAt })
-    .eq('stripe_subscription_id', subscription.stripeSubscriptionId)
+    .eq('billing_subscription_id', subscription.billingSubscriptionId)
   if (error) throw new Error(error.message)
 
   return granted
@@ -182,10 +252,6 @@ export async function grantPaidPeriodCites(subscription: SyncedSubscription): Pr
 export function grantReference(subscriptionId: string, periodStart: string): string {
   const unixSeconds = Math.floor(new Date(periodStart).getTime() / 1000)
   return `pro:${subscriptionId}:${unixSeconds}`
-}
-
-function toIso(unixSeconds: number): string {
-  return new Date(unixSeconds * 1000).toISOString()
 }
 
 function addCalendarMonth(iso: string): string {
@@ -199,4 +265,24 @@ function addCalendarMonth(iso: string): string {
   ).getUTCDate()
   target.setUTCDate(Math.min(day, lastDay))
   return target.toISOString()
+}
+
+function addInterval(iso: string, interval: BillingInterval): string {
+  const d = new Date(iso)
+  if (interval === 'year') {
+    d.setUTCFullYear(d.getUTCFullYear() + 1)
+  } else {
+    return addCalendarMonth(iso)
+  }
+  return d.toISOString()
+}
+
+function subtractInterval(iso: string, interval: BillingInterval): string {
+  const d = new Date(iso)
+  if (interval === 'year') {
+    d.setUTCFullYear(d.getUTCFullYear() - 1)
+  } else {
+    d.setUTCMonth(d.getUTCMonth() - 1)
+  }
+  return d.toISOString()
 }

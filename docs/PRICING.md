@@ -66,17 +66,17 @@ Friend-code redeem after signup still adds friendship only — no Cites.
 
 Rewarded ads for Cites are **removed**. Future Basic-only generation video ads are deferred until traffic justifies them; Pro remains ad-free.
 
-## Stripe setup
+## Lemon Squeezy setup
 
-Create new Prices in Stripe (do not reuse old price IDs). Update `.env.local`:
+Create products/variants in Lemon Squeezy and update `.env.local`:
 
 ```
-STRIPE_PRICE_PRO_MONTHLY=price_...     # $5.99/mo recurring
-STRIPE_PRICE_PRO_ANNUAL=price_...      # $54.89/yr recurring
-STRIPE_PRICE_CITES_100=price_...       # $2.99 one-time
-STRIPE_PRICE_CITES_200=price_...       # $4.99 one-time
-STRIPE_PRICE_CITES_400=price_...       # $7.99 one-time
-STRIPE_PRICE_CITES_1000=price_...      # $16.99 one-time
+LEMONSQUEEZY_VARIANT_PRO_MONTHLY=...   # $5.99/mo recurring
+LEMONSQUEEZY_VARIANT_PRO_ANNUAL=...    # $54.89/yr recurring
+LEMONSQUEEZY_VARIANT_CITES_100=...     # $2.99 one-time
+LEMONSQUEEZY_VARIANT_CITES_200=...     # $4.99 one-time
+LEMONSQUEEZY_VARIANT_CITES_400=...     # $7.99 one-time
+LEMONSQUEEZY_VARIANT_CITES_1000=...    # $16.99 one-time
 ```
 
-Grandfather existing Pro subscribers on older allotments in Stripe if needed before switching live Prices.
+Also set `LEMONSQUEEZY_API_KEY`, `LEMONSQUEEZY_STORE_ID`, and `LEMONSQUEEZY_WEBHOOK_SECRET`.

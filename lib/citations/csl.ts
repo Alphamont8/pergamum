@@ -1,5 +1,5 @@
 import type { SourceKind, SourceRecord } from '@/types'
-import { getDateParts, normalizeSourceForCitation } from './normalize'
+import { getDateParts, normalizeSourceForCitation, splitAuthorList } from './normalize'
 
 export interface CslItem {
   id: string
@@ -63,8 +63,11 @@ export function sourceToCslItem(source: SourceRecord): CslItem {
   const authors = clean.authorships?.length
     ? clean.authorships.map((a) => parseAuthorName(a.name, Boolean(a.literal)))
     : clean.authors
-      ? clean.authors.split(/(?:,|&| and )+/).map((a) => parseAuthorName(a))
-      : [{ literal: 'Anonymous' }]
+      ? splitAuthorList(clean.authors).map((a) => parseAuthorName(a))
+      : // Prefer short title over Anonymous when no byline / org is available.
+        [{ literal: clean.title || 'Untitled' }]
+
+  // authorships preferred above; splitAuthorList preserves "Last, First" groups.
 
   const dateParts = getDateParts(clean)
   const container = clean.venue?.name

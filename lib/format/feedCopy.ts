@@ -1,5 +1,5 @@
 import type { CitationPipelineStage } from '@/lib/cite/stages'
-import { formatMissReason } from '@/lib/format/agentReasoning'
+import { formatMissReason, reasoningImpliesCitations } from '@/lib/format/agentReasoning'
 
 export type FeedStepCopy = { message: string; detail: string }
 
@@ -38,6 +38,13 @@ export function analyzeStepCopy(
       const n = options?.count ?? 0
       const reasoning = options?.reasoning?.trim()
       if (n === 0) {
+        if (reasoning && reasoningImpliesCitations(reasoning)) {
+          return {
+            message: "We couldn't finish analysis",
+            detail:
+              "We found claims in your draft but couldn't match them to sentences. Try again or shorten your draft.",
+          }
+        }
         return {
           message: 'No citations needed',
           detail: reasoning || 'Nothing in your draft needs a source right now.',

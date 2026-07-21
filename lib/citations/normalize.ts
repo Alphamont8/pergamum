@@ -19,6 +19,10 @@ function titleCaseHost(host: string): string {
     'atag.org': 'ATAG',
     'abc17news.com': 'ABC17 News',
     'docslib.org': 'DocsLib',
+    'cdc.gov': 'CDC',
+    'www.cdc.gov': 'CDC',
+    'aasm.org': 'AASM',
+    'www.aasm.org': 'AASM',
     'nytimes.com': 'The New York Times',
     'bbc.com': 'BBC',
     'bbc.co.uk': 'BBC',
@@ -74,6 +78,8 @@ export function looksLikePersonName(name: string): boolean {
   if (!n || n.length < 3 || n.length > 80) return false
   if (ORG_AUTHOR_RE.test(n)) return false
   if (JUNK_AUTHOR_RE.test(n)) return false
+  // Acronyms / agency codes are organizations, not people.
+  if (/^[A-Z0-9]{2,8}$/.test(n)) return false
   if (/\d/.test(n)) return false
   if (/@|\.com|\.org|\.net/i.test(n)) return false
   if (n.split(/\s+/).length > 5) return false
@@ -124,8 +130,29 @@ export function formatTeamName(raw: string): string {
 
 export function splitAuthorList(raw?: string | null): string[] {
   if (!raw) return []
-  return raw
-    .split(/\s*(?:,|;|&|\/|\band\b|\bAND\b)\s*/)
+  const cleaned = raw.replace(/^(by|written by|author[:\s]+)/i, '').trim()
+  if (!cleaned) return []
+
+  // Explicit multi-author separators first.
+  if (/;/.test(cleaned)) {
+    return cleaned
+      .split(/\s*;\s*/)
+      .map((a) => a.trim())
+      .filter(Boolean)
+  }
+
+  // "Last, First M., Last, First M." — split only before the next surname, given pair.
+  // Lookahead: ", Surname, Given..." so "M. Safwan" stays with Badr.
+  if (/[\p{L}'’.-]+,\s+[A-ZÀ-ÖØ-Þ]/u.test(cleaned)) {
+    const parts = cleaned
+      .split(/,\s+(?=[A-ZÀ-ÖØ-Þ][\p{L}'’.-]*,\s+[A-ZÀ-ÖØ-Þ])/u)
+      .map((a) => a.trim())
+      .filter(Boolean)
+    if (parts.length >= 2) return parts
+  }
+
+  return cleaned
+    .split(/\s*(?:,|&|\/|\band\b|\bAND\b)\s*/)
     .map((a) => a.replace(/^(by|written by|author[:\s]+)/i, '').trim())
     .filter(Boolean)
 }
@@ -177,16 +204,65 @@ export function normalizePublicationDate(
     }
   }
 
-  const parsed = Date.parse(raw)
-  if (!Number.isNaN(parsed)) {
-    const dt = new Date(parsed)
-    const y = dt.getUTCFullYear()
-    const m = dt.getUTCMonth() + 1
-    const d = dt.getUTCDate()
-    return {
-      publicationDate: `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`,
-      year: String(y),
-      dateParts: [y, m, d],
+  const monthName = raw.match(
+    /\b(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+(\d{1,2}),?\s+(\d{4})\b/i,
+  )
+  if (monthName) {
+    const months: Record<string, number> = {
+      jan: 1, january: 1, feb: 2, february: 2, mar: 3, march: 3, apr: 4, april: 4,
+      may: 5, jun: 6, june: 6, jul: 7, july: 7, aug: 8, august: 8, sep: 9, september: 9,
+      oct: 10, october: 10, nov: 11, november: 11, dec: 12, december: 12,
+    }
+    const m = months[monthName[1].toLowerCase()]
+    const d = parseInt(monthName[2], 10)
+    const y = parseInt(monthName[3], 10)
+    if (m && d >= 1 && d <= 31) {
+      return {
+        publicationDate: `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`,
+        year: String(y),
+        dateParts: [y, m, d],
+      }
+    }
+  }
+
+  const dayMonthYear = raw.match(
+    /\b(\d{1,2})\s+(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+(\d{4})\b/i,
+  )
+  if (dayMonthYear) {
+    const months: Record<string, number> = {
+      jan: 1, january: 1, feb: 2, february: 2, mar: 3, march: 3, apr: 4, april: 4,
+      may: 5, jun: 6, june: 6, jul: 7, july: 7, aug: 8, august: 8, sep: 9, september: 9,
+      oct: 10, october: 10, nov: 11, november: 11, dec: 12, december: 12,
+    }
+    const d = parseInt(dayMonthYear[1], 10)
+    const m = months[dayMonthYear[2].toLowerCase()]
+    const y = parseInt(dayMonthYear[3], 10)
+    if (m && d >= 1 && d <= 31) {
+      return {
+        publicationDate: `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`,
+        year: String(y),
+        dateParts: [y, m, d],
+      }
+    }
+  }
+
+  const monthYear = raw.match(
+    /\b(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+(\d{4})\b/i,
+  )
+  if (monthYear) {
+    const months: Record<string, number> = {
+      jan: 1, january: 1, feb: 2, february: 2, mar: 3, march: 3, apr: 4, april: 4,
+      may: 5, jun: 6, june: 6, jul: 7, july: 7, aug: 8, august: 8, sep: 9, september: 9,
+      oct: 10, october: 10, nov: 11, november: 11, dec: 12, december: 12,
+    }
+    const m = months[monthYear[1].toLowerCase()]
+    const y = parseInt(monthYear[2], 10)
+    if (m) {
+      return {
+        publicationDate: `${y}-${String(m).padStart(2, '0')}-01`,
+        year: String(y),
+        dateParts: [y, m],
+      }
     }
   }
 
@@ -212,7 +288,7 @@ export function normalizeSourceForCitation(source: SourceRecord): SourceRecord {
       }
     : normalizeAuthors(source.authors)
 
-  // If authorships were org-only, allow a single formatted team literal
+  // Prefer individual authors; if none, use org/publisher (CDC, AASM, etc.).
   let authorships = authorBits.authorships
   let authors = authorBits.authors
   if (!authors) {
@@ -224,6 +300,11 @@ export function normalizeSourceForCitation(source: SourceRecord): SourceRecord {
       authors = team
       authorships = [{ name: team, literal: true }]
     }
+  }
+  if (!authors && siteName) {
+    // Always prefer the site/org over Anonymous when no personal byline exists.
+    authors = formatTeamName(siteName)
+    authorships = [{ name: authors, literal: true }]
   }
 
   const dateBits = normalizePublicationDate(source.publicationDate, source.year)

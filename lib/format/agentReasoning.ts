@@ -22,6 +22,22 @@ export function formatAnalysisReasoning(raw: string): string {
   return text
 }
 
+/** True when model reasoning describes selected claims but the sentence list is empty. */
+export function reasoningImpliesCitations(reasoning: string): boolean {
+  const r = reasoning.trim()
+  if (!r) return false
+  return (
+    /\b(selected|found|identified|included|flagged|marked)\b[\s\S]{0,48}\b(sentence|claim|passage)/i.test(
+      r,
+    ) ||
+    /\b(sentences?|claims?)[\s\S]{0,40}\b(require|need|needing|requiring|evidence-backed|empirical|citation)/i.test(
+      r,
+    ) ||
+    /\beach requires\b/i.test(r) ||
+    /\ball sentences\b/i.test(r)
+  )
+}
+
 const MISS_REASON_COPY: Record<string, string> = {
   'Source has no usable evidence text.':
     'The top candidates did not include enough text to verify support.',

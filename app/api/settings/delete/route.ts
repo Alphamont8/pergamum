@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
-import { getStripe } from '@/lib/stripe/client'
+import { cancelLemonSubscription, isLemonConfigured } from '@/lib/lemonsqueezy/client'
 
 export async function POST() {
   const supabase = await createClient()
@@ -12,7 +12,7 @@ export async function POST() {
   const service = await createServiceClient()
   const { data: subscription } = await service
     .from('subscriptions')
-    .select('stripe_subscription_id, status')
+    .select('billing_subscription_id, status')
     .eq('user_id', user.id)
     .maybeSingle()
 
@@ -20,14 +20,24 @@ export async function POST() {
     subscription &&
     !['canceled', 'incomplete_expired'].includes(subscription.status)
   ) {
-    if (!process.env.STRIPE_SECRET_KEY) {
+    if (!isLemonConfigured() && !subscription.billing_subscription_id.startsWith('sub_manual_') && !subscription.billing_subscription_id.startsWith('sub_dev_')) {
       return NextResponse.json(
         { error: 'Billing is unavailable, so the active subscription could not be canceled.' },
         { status: 503 },
       )
     }
     try {
-      await getStripe().subscriptions.cancel(subscription.stripe_subscription_id)
+      const result = await cancelLemonSubscription(subscription.billing_subscription_id)
+      if (!result.ok) {
+        return NextResponse.json(
+          {
+            error: result.error
+              ? `The subscription could not be canceled: ${result.error}`
+              : 'The subscription could not be canceled.',
+          },
+          { status: 502 },
+        )
+      }
     } catch (err) {
       return NextResponse.json(
         {

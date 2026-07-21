@@ -9,27 +9,69 @@ export function referencingStyleToCitationStyle(id: ReferencingStyleId): Citatio
   return 'APA'
 }
 
-export function isNumericReferencingStyle(id: ReferencingStyleId): boolean {
-  return id === 'ieee' || id === 'vancouver' || id === 'nature' || id === 'science'
+/**
+ * Bracket / parenthetical numeric markers in running text: [1] or (1).
+ * Nature uses superscript instead; Science uses italic parentheticals.
+ */
+export function isBracketNumericReferencingStyle(id: ReferencingStyleId): boolean {
+  return id === 'ieee' || id === 'vancouver'
 }
 
-/** AMA and ACS use superscript numbers in running text. */
+/** Science magazine: italicized numbers in parentheses. */
+export function isScienceParentheticalStyle(id: ReferencingStyleId): boolean {
+  return id === 'science'
+}
+
+/**
+ * Styles whose bibliography must stay in citation order (not alphabetical).
+ * Includes AMA/ACS/Nature/Science, not only bracket-numeric styles.
+ */
+export function isCitationOrderStyle(id: ReferencingStyleId): boolean {
+  return (
+    id === 'ieee' ||
+    id === 'vancouver' ||
+    id === 'ama' ||
+    id === 'acs' ||
+    id === 'nature' ||
+    id === 'science'
+  )
+}
+
+/** @deprecated Prefer isCitationOrderStyle / isBracketNumericReferencingStyle. */
+export function isNumericReferencingStyle(id: ReferencingStyleId): boolean {
+  return isCitationOrderStyle(id)
+}
+
+/**
+ * Superscript numbers in running text (AMA, ACS, Nature, and notes-style proxies).
+ */
 export function isSuperscriptReferencingStyle(id: ReferencingStyleId): boolean {
   return (
     id === 'ama' ||
     id === 'acs' ||
+    id === 'nature' ||
     id === 'chicago-notes' ||
     id === 'oscola' ||
-    id === 'mhra'
+    id === 'mhra' ||
+    id === 'bluebook'
   )
 }
 
 export function isNotesReferencingStyle(id: ReferencingStyleId): boolean {
-  return id === 'chicago-notes' || id === 'oscola'
+  return id === 'chicago-notes' || id === 'oscola' || id === 'mhra' || id === 'bluebook'
 }
 
 export function isBluebookStyle(id: ReferencingStyleId): boolean {
   return id === 'bluebook'
+}
+
+/** True when in-text markers are numeric (any form) and need citation numbers. */
+export function usesNumericInTextMarker(id: ReferencingStyleId): boolean {
+  return (
+    isBracketNumericReferencingStyle(id) ||
+    isScienceParentheticalStyle(id) ||
+    isSuperscriptReferencingStyle(id)
+  )
 }
 
 export function referencingStyleHasCitations(id: ReferencingStyleId): boolean {

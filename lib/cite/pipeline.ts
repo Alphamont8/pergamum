@@ -1055,20 +1055,24 @@ async function enrichCandidateRecord(
     try {
       const maxAgeHours = snippetLength(record) >= SNIPPET_CACHEABLE_CHARS ? 24 : 0
       const meta = await fetchPageMetadata(record.url!, { maxAgeHours })
-      if (!meta) return record
+      if (!meta) return normalizeSourceForCitation(record)
 
       const authors = record.authors || meta.authors
+      const authorships = record.authorships?.length
+        ? record.authorships
+        : meta.authorships
       const year = record.year || meta.year
       const publicationDate = record.publicationDate || meta.publishedDate
       const abstract = meta.text?.slice(0, 2000) || record.abstract
       const summary = meta.summary || record.summary
       const title = record.title || meta.title || record.title
-      const publisher = record.publisher || meta.siteName
+      const publisher = record.publisher || meta.siteName || meta.organization
 
-      return {
+      return normalizeSourceForCitation({
         ...record,
         title,
         authors,
+        authorships,
         year,
         publicationDate,
         abstract,
@@ -1084,10 +1088,10 @@ async function enrichCandidateRecord(
           highlights: meta.highlights?.length ? meta.highlights : record.exa?.highlights,
         },
         enrichment: { status: 'enriched', enrichedAt: Date.now() },
-      }
+      })
     } catch (err) {
       console.warn('[enrich] failed', record.url, err instanceof Error ? err.message : err)
-      return record
+      return normalizeSourceForCitation(record)
     }
   })()
 
@@ -1587,6 +1591,9 @@ export async function findCitationForSentence(input: {
           let record = best.candidate.record
           if (record.doi && needsDoiEnrichment(record)) {
             record = await enrichFromDoi(record)
+          }
+          if (needsEnrichment(record)) {
+            record = await enrichCandidateRecord(record, ctx.exaUrlCache)
           }
           return finish({
             status: 'done',

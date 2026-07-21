@@ -4,7 +4,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 /** Always public (no auth required). */
 const PUBLIC_PATHS = [
   '/login',
-  '/api/webhooks/stripe',
+  '/api/webhooks/lemon-squeezy',
   '/privacy',
   '/terms',
   '/cookies',

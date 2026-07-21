@@ -1,6 +1,6 @@
 /** Client-safe Pro trial types and constants (no server imports). */
 
-/** Timed Pro features trial after a Cites pack purchase. No Stripe subscription / no auto-charge. */
+/** Timed Pro features trial after a Cites pack purchase. No paid subscription / no auto-charge. */
 export const PRO_FEATURES_TRIAL_DAYS = 14
 
 export type ProTrialPhase = 'eligible' | 'active' | 'expired' | 'consumed'

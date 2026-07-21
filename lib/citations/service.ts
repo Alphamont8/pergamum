@@ -5,11 +5,19 @@
 import { Cite } from '@citation-js/core'
 import type { ReferencingStyleId, SourceRecord } from '@/types'
 import { citationNumberForSource } from '@/lib/citations/numbering'
-import { isBluebookStyle, isNumericReferencingStyle, isSuperscriptReferencingStyle } from '@/utils/referencingStyle'
+import {
+  isBluebookStyle,
+  isCitationOrderStyle,
+  usesNumericInTextMarker,
+} from '@/utils/referencingStyle'
 import { sourcesToCslItems, type CslItem } from './csl'
 import { formatBibliographyFallback, formatInTextFallback } from './fallback'
 import { normalizeSourceForCitation } from './normalize'
-import { clearTemplateInit, ensureCitationTemplates, resolveCitationTemplate } from './templates'
+import {
+  clearTemplateInit,
+  ensureCitationTemplates,
+  getUsableCitationTemplate,
+} from './templates'
 
 const DEFAULT_LANG = 'en-US'
 
@@ -22,6 +30,10 @@ function buildCite(sources: SourceRecord[]): Cite {
   return new Cite(items.length ? items : [{ id: 'empty', type: 'article', title: 'Untitled' }])
 }
 
+/**
+ * Run a Citation.js formatter only when a real template is registered.
+ * Avoids plugin-csl's silent fallback to APA for missing template names.
+ */
 async function withCite<T>(
   sources: SourceRecord[],
   styleId: ReferencingStyleId,
@@ -29,7 +41,7 @@ async function withCite<T>(
 ): Promise<T | null> {
   if (styleId === 'none') return null
   await ensureCitationTemplates()
-  const template = resolveCitationTemplate(styleId)
+  const template = getUsableCitationTemplate(styleId)
   if (!template) return null
   return fn(buildCite(sources), template)
 }
@@ -60,7 +72,7 @@ export async function formatBibliographyEntry(
       }
     }
   } catch {
-    /* fall through */
+    /* fall through to style-specific string fallback */
   }
   return formatBibliographyFallback(clean, styleId)
 }
@@ -76,10 +88,13 @@ export async function formatInTextCitation(
 ): Promise<string> {
   const clean = normalizeSourceForCitation(source)
   const cleanAll = allSources.map(normalizeSourceForCitation)
-  if (isBluebookStyle(styleId)) {
-    const num = options?.priorSourceIds
-      ? citationNumberForSource(clean.id, options.priorSourceIds)
+  const num = options?.priorSourceIds
+    ? citationNumberForSource(clean.id, options.priorSourceIds)
+    : usesNumericInTextMarker(styleId)
+      ? 1
       : undefined
+
+  if (isBluebookStyle(styleId)) {
     return formatInTextFallback(clean, styleId, num)
   }
 
@@ -108,12 +123,6 @@ export async function formatInTextCitation(
     /* fall through */
   }
 
-  const num =
-    isNumericReferencingStyle(styleId) || isSuperscriptReferencingStyle(styleId)
-      ? options?.priorSourceIds
-        ? citationNumberForSource(clean.id, options.priorSourceIds)
-        : 1
-      : undefined
   return formatInTextFallback(clean, styleId, num)
 }
 
@@ -142,7 +151,8 @@ export async function formatBibliographyBatch(
         lang: DEFAULT_LANG,
         format: 'text',
         asEntryArray: true,
-        nosort: isNumericReferencingStyle(styleId),
+        // Keep AMA/ACS/Nature/Science/IEEE/Vancouver in citation order.
+        nosort: isCitationOrderStyle(styleId),
       }),
     )
 

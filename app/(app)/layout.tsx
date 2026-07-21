@@ -43,7 +43,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           citesBalance: profile.citesBalance,
           referralCode: profile.referralCode,
           planTier: profile.planTier,
-          hasBillingAccount: Boolean(profile.stripeCustomerId),
+          hasBillingAccount: Boolean(profile.billingCustomerId),
           trial,
           subscription: subscription
             ? {

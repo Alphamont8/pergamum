@@ -78,7 +78,7 @@ export default function TermsPage() {
                 payment method when it ends.
               </li>
               <li>
-                Paid purchases and subscriptions are processed by Stripe. Prices, taxes, and billing
+                Paid purchases and subscriptions are processed by Lemon Squeezy. Prices, taxes, and billing
                 intervals are presented at checkout. Unless required by law or stated otherwise at
                 purchase, paid Cites and subscription fees are non-refundable once delivered or activated.
               </li>

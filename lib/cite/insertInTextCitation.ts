@@ -1,9 +1,14 @@
 import type { ReferencingStyleId } from '@/types'
-import { isSuperscriptReferencingStyle } from '@/utils/referencingStyle'
+import {
+  isScienceParentheticalStyle,
+  isSuperscriptReferencingStyle,
+} from '@/utils/referencingStyle'
 import { sentenceHasExistingInTextCitation } from '@/lib/cite/existingCitation'
 
 function usesTightCitationMark(inText: string, styleId?: ReferencingStyleId): boolean {
   if (styleId && isSuperscriptReferencingStyle(styleId)) return true
+  // Science parentheticals keep a normal word space before (n).
+  if (styleId && isScienceParentheticalStyle(styleId)) return false
   return /^[\d¹²³⁴⁵⁶⁷⁸⁹⁰]+$/u.test(inText.trim())
 }
 

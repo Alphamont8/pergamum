@@ -222,7 +222,7 @@ export interface Profile {
   proCitesBalance: number
   bibliographiesCount: number
   onboardingComplete: boolean
-  stripeCustomerId: string | null
+  billingCustomerId: string | null
   planTier: PlanTier
   proTrialStartedAt: string | null
   proTrialEndsAt: string | null
@@ -233,8 +233,8 @@ export interface Profile {
 export interface Subscription {
   id: string
   userId: string
-  stripeSubscriptionId: string
-  stripeCustomerId: string
+  billingSubscriptionId: string
+  billingCustomerId: string
   planTier: Exclude<PlanTier, 'basic'>
   billingInterval: BillingInterval
   status: SubscriptionStatus

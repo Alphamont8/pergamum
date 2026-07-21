@@ -1,8 +1,11 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
-import { getStripe } from '@/lib/stripe/client'
-import { priceIdForPro } from '@/lib/billing/plans'
+import {
+  createLemonCheckout,
+  isLemonConfigured,
+  variantIdForPro,
+} from '@/lib/lemonsqueezy/client'
 import { getAppUrl } from '@/lib/site'
 
 const bodySchema = z.object({
@@ -22,8 +25,8 @@ export async function POST(request: Request) {
   }
 
   const { interval } = parsed.data
-  const priceId = priceIdForPro(interval)
-  if (!priceId || !process.env.STRIPE_SECRET_KEY) {
+  const variantId = variantIdForPro(interval)
+  if (!variantId || !isLemonConfigured()) {
     return NextResponse.json(
       { error: 'Pro checkout is not configured for this billing interval.' },
       { status: 503 },
@@ -31,18 +34,11 @@ export async function POST(request: Request) {
   }
 
   const service = await createServiceClient()
-  const [{ data: profile }, { data: existingSubscription }] = await Promise.all([
-    service
-      .from('profiles')
-      .select('stripe_customer_id')
-      .eq('id', user.id)
-      .single(),
-    service
-      .from('subscriptions')
-      .select('stripe_subscription_id, status')
-      .eq('user_id', user.id)
-      .maybeSingle(),
-  ])
+  const { data: existingSubscription } = await service
+    .from('subscriptions')
+    .select('billing_subscription_id, status')
+    .eq('user_id', user.id)
+    .maybeSingle()
 
   if (
     existingSubscription &&
@@ -54,46 +50,25 @@ export async function POST(request: Request) {
     )
   }
 
-  const stripe = getStripe()
-  let customerId = profile?.stripe_customer_id ?? undefined
-
-  if (!customerId) {
-    const customer = await stripe.customers.create({
-      email: user.email,
-      metadata: { supabase_user_id: user.id },
-    })
-    customerId = customer.id
-    const { error } = await service.rpc('set_stripe_customer', {
-      p_user_id: user.id,
-      p_customer_id: customerId,
-    })
-    if (error) {
-      return NextResponse.json({ error: "We couldn't connect your billing profile." }, { status: 500 })
-    }
-  }
-
   const origin = getAppUrl()
-  const session = await stripe.checkout.sessions.create({
-    mode: 'subscription',
-    customer: customerId,
-    client_reference_id: user.id,
-    line_items: [{ price: priceId, quantity: 1 }],
-    allow_promotion_codes: true,
-    success_url: `${origin}/upgrade?success=1`,
-    cancel_url: `${origin}/upgrade?cancelled=1`,
-    metadata: {
+  const checkout = await createLemonCheckout({
+    variantId,
+    userId: user.id,
+    email: user.email,
+    custom: {
       supabase_user_id: user.id,
       plan: 'pro',
       billing_interval: interval,
     },
-    subscription_data: {
-      metadata: {
-        supabase_user_id: user.id,
-        plan: 'pro',
-        billing_interval: interval,
-      },
-    },
+    redirectUrl: `${origin}/upgrade?success=1`,
   })
 
-  return NextResponse.json({ url: session.url })
+  if (!checkout) {
+    return NextResponse.json(
+      { error: "We couldn't start checkout. Please try again." },
+      { status: 502 },
+    )
+  }
+
+  return NextResponse.json({ url: checkout.url })
 }

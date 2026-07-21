@@ -6,6 +6,7 @@ import type { SourceRecord } from '@/types'
 import { enrichFromDoi } from '@/lib/enrichment/doi'
 import { fetchCrossrefWork } from '@/lib/enrichment/crossref'
 import { lookupOpenAlexByDoi, openAlexWorkToPatch } from '@/lib/enrichment/openalex'
+import { fetchPageMetadata } from '@/lib/enrichment/exa'
 import { normalizeSourceForCitation } from '@/lib/citations/normalize'
 
 const DOI_IN_TEXT = /\b(10\.\d{4,}(?:\.\d+)*\/[^\s)\]>"']+)/i
@@ -112,15 +113,33 @@ async function resolveOneLink(link: string, index: number): Promise<SourceRecord
     }
   }
 
-  // Non-DOI URL — keep a lightweight record; pipeline can still attach bibliography.
+  // Non-DOI URL — fetch page metadata so authors/dates aren't left blank.
   try {
     const host = new URL(link).hostname.replace(/^www\./, '')
+    const meta = await fetchPageMetadata(link, { maxAgeHours: 24 }).catch(() => null)
+    const siteName = meta?.siteName || host
     return normalizeSourceForCitation({
       id: `provided-url-${index}`,
-      title: host,
+      title: meta?.title || siteName,
       type: 'secondary',
       url: link,
-      publisher: host,
+      publisher: siteName,
+      authors: meta?.authors,
+      year: meta?.year,
+      publicationDate: meta?.publishedDate,
+      abstract: meta?.text?.slice(0, 2000),
+      summary: meta?.summary,
+      venue: siteName ? { name: siteName, type: 'website' } : undefined,
+      exa: meta
+        ? {
+            siteName,
+            publishedDate: meta.publishedDate,
+            highlights: meta.highlights,
+            favicon: meta.favicon,
+            image: meta.image,
+          }
+        : { siteName },
+      enrichment: meta ? { status: 'enriched', enrichedAt: Date.now() } : undefined,
     })
   } catch {
     return null

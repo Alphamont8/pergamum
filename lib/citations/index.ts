@@ -27,4 +27,4 @@ export type { CslItem } from './csl'
 
 export { normalizeSourceForCitation } from './normalize'
 
-export { ensureCitationTemplates, resolveCitationTemplate } from './templates'
+export { ensureCitationTemplates, resolveCitationTemplate, getUsableCitationTemplate } from './templates'

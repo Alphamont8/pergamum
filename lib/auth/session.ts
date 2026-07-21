@@ -15,7 +15,7 @@ export const getSessionUser = cache(async () => {
 })
 
 const PROFILE_COLUMNS =
-  'id, username, display_name, avatar_url, school_id, default_style, default_in_text, default_suggest_corrections, default_recency, default_source_tier, theme_preference, referral_code, cites_balance, pro_cites_balance, bibliographies_count, onboarding_complete, stripe_customer_id, plan_tier, pro_trial_started_at, pro_trial_ends_at, created_at, updated_at'
+  'id, username, display_name, avatar_url, school_id, default_style, default_in_text, default_suggest_corrections, default_recency, default_source_tier, theme_preference, referral_code, cites_balance, pro_cites_balance, bibliographies_count, onboarding_complete, billing_customer_id, plan_tier, pro_trial_started_at, pro_trial_ends_at, created_at, updated_at'
 
 export const getProfile = cache(async (userId: string): Promise<Profile | null> => {
   await syncExpiredProFeaturesTrial(userId)
@@ -70,7 +70,7 @@ export function mapProfile(row: Record<string, unknown>): Profile {
     proCitesBalance: proPool,
     bibliographiesCount: Number(row.bibliographies_count ?? 0),
     onboardingComplete: Boolean(row.onboarding_complete),
-    stripeCustomerId: (row.stripe_customer_id as string | null) ?? null,
+    billingCustomerId: (row.billing_customer_id as string | null) ?? null,
     planTier: normalizePlanTier(row.plan_tier ?? FREE_PLAN_TIER),
     proTrialStartedAt: (row.pro_trial_started_at as string | null) ?? null,
     proTrialEndsAt: (row.pro_trial_ends_at as string | null) ?? null,

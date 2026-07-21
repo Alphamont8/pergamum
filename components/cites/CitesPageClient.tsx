@@ -205,7 +205,7 @@ export function CitesPageClient({
     checkoutResult === 'success'
       ? trial.phase === 'active'
         ? `Payment received! Your pack Cites are on the way, and Pro features are unlocked for ${PRO_FEATURES_TRIAL_DAYS} days (no monthly Cites allotment, and we won't charge you when the trial ends).`
-        : 'Payment received! Your Cites will show up as soon as Stripe finishes confirming it.'
+        : 'Payment received! Your Cites will show up as soon as we finish confirming it.'
       : checkoutResult === 'cancelled'
         ? 'No worries, checkout was canceled and nothing was charged.'
         : null,
@@ -763,7 +763,7 @@ export function CitesPageClient({
 
         {historyFilter === 'all' && purchases.length > 0 ? (
           <p className="pg-subtle cites-history__purchases-note">
-            Completed pack checkouts also appear above as Top-ups when Stripe finishes confirming
+            Completed pack checkouts also appear above as Top-ups when payment finishes confirming
             them.
           </p>
         ) : null}

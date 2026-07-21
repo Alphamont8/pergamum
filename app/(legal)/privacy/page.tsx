@@ -63,8 +63,9 @@ export default function PrivacyPage() {
               </li>
               <li>
                 <strong>Billing information.</strong> Payment status, subscription state, and
-                Stripe-related identifiers. Card numbers and full payment credentials are handled by
-                Stripe and are not stored on Pergamum servers.
+                billing-related identifiers from our payment provider (Lemon Squeezy). Card numbers and
+                full payment credentials are handled by Lemon Squeezy and are not stored on Pergamum
+                servers.
               </li>
               <li>
                 <strong>Technical data.</strong> IP address, browser type, device information, approximate
@@ -90,7 +91,7 @@ export default function PrivacyPage() {
               <li>Create and manage your account, sessions, and profile.</li>
               <li>Provide citation generation, source search, verification, formatting, and related features.</li>
               <li>Track Cites, referrals, leaderboards, and plan entitlements.</li>
-              <li>Process purchases, subscriptions, invoices, and customer billing support via Stripe.</li>
+              <li>Process purchases, subscriptions, invoices, and customer billing support via Lemon Squeezy.</li>
               <li>Respond to feedback, support requests, and security or abuse investigations.</li>
               <li>Improve reliability, quality, and product design, including debugging and performance monitoring.</li>
               <li>Comply with law, enforce our Terms of Service, and protect users and Pergamum.</li>
@@ -126,17 +127,18 @@ export default function PrivacyPage() {
 
       <section className="legal-section">
         <div className="pg-title-copy">
-          <h2>Payments (Stripe)</h2>
+          <h2>Payments (Lemon Squeezy)</h2>
           <div className="legal-stack">
             <p>
-              Paid Cites packs and subscriptions are processed by Stripe. When you check out, Stripe
-              collects payment details under Stripe&apos;s privacy policy. We receive limited billing
-              information such as customer and subscription identifiers, payment status, and plan details
-              needed to unlock Pro features or credit your Cites.
+              Paid Cites packs and subscriptions are processed by Lemon Squeezy as Merchant of Record.
+              When you check out, Lemon Squeezy collects payment details under Lemon Squeezy&apos;s
+              privacy policy. We receive limited billing information such as customer and subscription
+              identifiers, payment status, and plan details needed to unlock Pro features or credit your
+              Cites.
             </p>
             <p>
-              Refunds, chargebacks, and tax handling follow Stripe&apos;s tools and applicable law. Contact
-              us if a payment issue needs our help coordinating with Stripe.
+              Refunds, chargebacks, and tax handling follow Lemon Squeezy&apos;s tools and applicable law.
+              Contact us if a payment issue needs our help coordinating with Lemon Squeezy.
             </p>
           </div>
         </div>
@@ -166,9 +168,9 @@ export default function PrivacyPage() {
             <p>We share information only as needed to run Pergamum:</p>
             <ul>
               <li>
-                <strong>Service providers.</strong> Supabase (authentication, database, storage), Stripe
-                (payments), hosting and infrastructure providers, and AI or search vendors that process
-                content to fulfill your requests.
+                <strong>Service providers.</strong> Supabase (authentication, database, storage), Lemon
+                Squeezy (payments), hosting and infrastructure providers, and AI or search vendors that
+                process content to fulfill your requests.
               </li>
               <li>
                 <strong>Legal and safety.</strong> When required by law, court order, or to protect rights,

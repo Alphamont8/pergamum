@@ -57,7 +57,7 @@ export default async function SettingsPage() {
         citesBalance: profile.citesBalance,
         themePreference: profile.themePreference,
         canChangePassword,
-        hasBillingAccount: Boolean(profile.stripeCustomerId),
+        hasBillingAccount: Boolean(profile.billingCustomerId),
         trial,
         subscription: subscription
           ? {

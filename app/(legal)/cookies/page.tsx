@@ -92,14 +92,14 @@ export default function CookiesPage() {
 
       <section className="legal-section">
         <div className="pg-title-copy">
-          <h2>Stripe Checkout</h2>
+          <h2>Lemon Squeezy Checkout</h2>
           <div className="legal-stack">
             <p>
-              When you purchase Cites or subscribe to Pro, checkout is handled by Stripe. Stripe and
-              related payment pages may set their own cookies to process payments securely, prevent fraud,
-              and complete the transaction. Those cookies are governed by Stripe&apos;s policies. Pergamum
-              receives billing status and related identifiers needed to credit your account, not your full
-              card number.
+              When you purchase Cites or subscribe to Pro, checkout is handled by Lemon Squeezy. Lemon
+              Squeezy and related payment pages may set their own cookies to process payments securely,
+              prevent fraud, and complete the transaction. Those cookies are governed by Lemon
+              Squeezy&apos;s policies. Pergamum receives billing status and related identifiers needed to
+              credit your account, not your full card number.
             </p>
           </div>
         </div>
@@ -124,8 +124,8 @@ export default function CookiesPage() {
                 cookies used for access.
               </li>
               <li>
-                Manage payment-related cookies through Stripe&apos;s checkout experience and your browser
-                controls when you visit Stripe-hosted pages.
+                Manage payment-related cookies through Lemon Squeezy&apos;s checkout experience and your
+                browser controls when you visit Lemon Squeezy-hosted pages.
               </li>
             </ul>
             <p>

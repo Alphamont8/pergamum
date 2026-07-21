@@ -6,7 +6,7 @@
 2. Run SQL migrations in order:
    - Optional: ignore or drop leftovers from `001` / `002` if present.
    - Run `supabase/migrations/003_citation_app.sql` through
-     `supabase/migrations/013_harden_subscription_billing.sql`.
+     `supabase/migrations/023_lemonsqueezy_billing.sql`.
 3. Seed universities:
 
 ```bash
@@ -71,18 +71,28 @@ Without this token, Pro legal essays still use OpenAlex + web; the legal databas
 
 - `EXA_API_KEY` — Exa `/search` (Pro fallback) and Exa `/contents` (page hydration for all plans).
 - `PERPLEXITY_API_KEY` — [Perplexity Search API](https://docs.perplexity.ai/api-reference/search-post) (`POST /search`). Flat **$0.005 per request**. Primary web discovery for news/mixed claims.
+- `LLAMA_CLOUD_API_KEY` (optional) — [LlamaCloud](https://cloud.llamaindex.ai) PDF fallback when Exa `/contents` leaves authors/dates thin on `.pdf` URLs. Uses LlamaParse (`source_url`) + LlamaExtract (bibliographic schema) at the **cost_effective** tier. Without this key, PDF hydration stays Exa-only.
+- `LLAMA_CLOUD_PROJECT_ID` (optional) — pin Llama jobs to a specific project; otherwise the job’s default project from the API key is used.
 
-## 4. Stripe
+## 4. Lemon Squeezy
 
-Use a restricted Stripe API key with only the Customer, Checkout Session, Customer Portal, Price,
-and Subscription permissions required by these routes.
+Lemon Squeezy is the Merchant of Record (hosted checkout, tax remittance, customer portal).
 
-Create a **Pro** subscription Product with two recurring Prices:
+1. Create a store at [app.lemonsqueezy.com](https://app.lemonsqueezy.com) (test mode first).
+2. Create products/variants matching the prices below; copy each **variant ID** into env.
+3. Create an API key and note your **store ID**.
+4. Add a webhook → `POST /api/webhooks/lemon-squeezy` with the signing secret.
 
-| Interval | Stripe price | Env |
-|----------|--------------|-----|
-| Monthly | $5.99/month | `STRIPE_PRICE_PRO_MONTHLY` |
-| Annual | $54.89/year ($4.99/mo × 12) | `STRIPE_PRICE_PRO_ANNUAL` |
+| Product | Price | Env |
+|---------|-------|-----|
+| Pro Monthly (subscription) | $5.99/month | `LEMONSQUEEZY_VARIANT_PRO_MONTHLY` |
+| Pro Annual (subscription) | $54.89/year ($4.99/mo × 12) | `LEMONSQUEEZY_VARIANT_PRO_ANNUAL` |
+| 100 Cites (one-time) | $2.99 | `LEMONSQUEEZY_VARIANT_CITES_100` |
+| 200 Cites (one-time) | $4.99 | `LEMONSQUEEZY_VARIANT_CITES_200` |
+| 400 Cites (one-time) | $7.99 | `LEMONSQUEEZY_VARIANT_CITES_400` |
+| 1,000 Cites (one-time) | $16.99 | `LEMONSQUEEZY_VARIANT_CITES_1000` |
+
+Also set `LEMONSQUEEZY_API_KEY`, `LEMONSQUEEZY_STORE_ID`, and `LEMONSQUEEZY_WEBHOOK_SECRET`.
 
 Annual is billed as a single yearly charge at the $4.99/mo effective rate. Pro grants
 300 Cites at activation and every month after that (unused monthly allotment resets; pack
@@ -93,30 +103,13 @@ trial (no 300 allotment, no auto-charge) via migration `021`.
 
 See [docs/PRICING.md](docs/PRICING.md) for pack sizing rationale.
 
-Also create three **one-time** Cites pack Products/Prices:
+Webhook events:
 
-| Pack | Price | Env |
-|------|-------|-----|
-| 100 Cites | $2.99 | `STRIPE_PRICE_CITES_100` |
-| 200 Cites | $4.99 | `STRIPE_PRICE_CITES_200` |
-| 400 Cites | $7.99 | `STRIPE_PRICE_CITES_400` |
-| 1,000 Cites | $16.99 | `STRIPE_PRICE_CITES_1000` |
+- `order_created`, `order_refunded`
+- `subscription_created`, `subscription_updated`, `subscription_cancelled`, `subscription_resumed`, `subscription_expired`, `subscription_paused`, `subscription_unpaused`
+- `subscription_payment_success`, `subscription_payment_failed`, `subscription_payment_recovered`
 
-Configure Stripe's Customer Portal to allow subscription cancellation and payment-method updates.
-
-Webhook endpoint: `POST /api/webhooks/stripe`  
-Events:
-
-- `checkout.session.completed`
-- `checkout.session.async_payment_succeeded`
-- `checkout.session.async_payment_failed`
-- `checkout.session.expired`
-- `customer.subscription.created`
-- `customer.subscription.updated`
-- `customer.subscription.deleted`
-- `invoice.paid`
-
-Set `STRIPE_WEBHOOK_SECRET`.
+Customer portal URLs come from the Lemon Squeezy API (signed `customer_portal` on the subscription).
 
 ## 5. Ads (deferred)
 
@@ -141,7 +134,7 @@ Open http://localhost:3000 — signed-out users land on the product/login page. 
 
 Balances are **not** client-writable:
 
-- `cites_balance`, `bibliographies_count`, `referral_code`, and `stripe_customer_id` are protected by a database trigger.
+- `cites_balance`, `bibliographies_count`, `referral_code`, and `billing_customer_id` are protected by a database trigger.
 - Credits/debits happen only via `cites_ledger` inserts (service role / security-definer triggers).
 
 Apply migration `004_cites_security_guest.sql` after `003` if you still need the legacy guest tables for historical data.

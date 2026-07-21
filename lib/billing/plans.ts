@@ -24,7 +24,7 @@ export const PRO_PRICING = {
   month: {
     label: 'Monthly',
     displayMonthlyCents: 599,
-    priceEnv: 'STRIPE_PRICE_PRO_MONTHLY',
+    variantEnv: 'LEMONSQUEEZY_VARIANT_PRO_MONTHLY',
   },
   year: {
     label: 'Annual',
@@ -32,14 +32,14 @@ export const PRO_PRICING = {
     displayMonthlyCents: 499,
     /** Total annual charge in cents ($54.89). */
     displayAnnualCents: 5489,
-    priceEnv: 'STRIPE_PRICE_PRO_ANNUAL',
+    variantEnv: 'LEMONSQUEEZY_VARIANT_PRO_ANNUAL',
   },
 } as const satisfies Record<
   BillingInterval,
   {
     label: string
     displayMonthlyCents: number
-    priceEnv: string
+    variantEnv: string
     displayAnnualCents?: number
   }
 >
@@ -196,15 +196,15 @@ export const PLAN_COMPARISON_SECTIONS: PlanComparisonSection[] = [
   },
 ]
 
-export function priceIdForPro(interval: BillingInterval): string | undefined {
-  return process.env[PRO_PRICING[interval].priceEnv]
+export function variantIdForPro(interval: BillingInterval): string | undefined {
+  return process.env[PRO_PRICING[interval].variantEnv]?.trim() || undefined
 }
 
-export function planFromPriceId(
-  priceId: string,
+export function planFromVariantId(
+  variantId: string,
 ): { planTier: Exclude<PlanTier, 'basic'>; billingInterval: BillingInterval } | null {
   for (const interval of Object.keys(PRO_PRICING) as BillingInterval[]) {
-    if (priceIdForPro(interval) === priceId) {
+    if (variantIdForPro(interval) === String(variantId)) {
       return { planTier: 'pro', billingInterval: interval }
     }
   }

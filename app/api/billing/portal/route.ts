@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
-import { getStripe } from '@/lib/stripe/client'
-import { getAppUrl } from '@/lib/site'
+import { createClient, createServiceClient } from '@/lib/supabase/server'
+import {
+  getCustomerPortalUrl,
+  isLemonConfigured,
+} from '@/lib/lemonsqueezy/client'
 
 export async function POST() {
   const supabase = await createClient()
@@ -10,25 +12,39 @@ export async function POST() {
   } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'You need to sign in to do that.' }, { status: 401 })
 
-  if (!process.env.STRIPE_SECRET_KEY) {
-    return NextResponse.json({ error: 'Stripe is not configured.' }, { status: 503 })
+  if (!isLemonConfigured()) {
+    return NextResponse.json({ error: 'Billing is not configured.' }, { status: 503 })
   }
 
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('stripe_customer_id')
-    .eq('id', user.id)
-    .single()
+  const service = await createServiceClient()
+  const { data: subscription } = await service
+    .from('subscriptions')
+    .select('billing_subscription_id, status')
+    .eq('user_id', user.id)
+    .maybeSingle()
 
-  if (!profile?.stripe_customer_id) {
+  if (!subscription?.billing_subscription_id) {
     return NextResponse.json({ error: 'No billing account was found.' }, { status: 404 })
   }
 
-  const origin = getAppUrl()
-  const session = await getStripe().billingPortal.sessions.create({
-    customer: profile.stripe_customer_id,
-    return_url: `${origin}/upgrade`,
-  })
+  // Manual / seed subscriptions have no Lemon portal.
+  if (
+    subscription.billing_subscription_id.startsWith('sub_manual_') ||
+    subscription.billing_subscription_id.startsWith('sub_dev_')
+  ) {
+    return NextResponse.json(
+      { error: 'This Pro plan is managed outside of checkout.' },
+      { status: 400 },
+    )
+  }
 
-  return NextResponse.json({ url: session.url })
+  const url = await getCustomerPortalUrl(subscription.billing_subscription_id)
+  if (!url) {
+    return NextResponse.json(
+      { error: "We couldn't open the billing portal. Please try again." },
+      { status: 502 },
+    )
+  }
+
+  return NextResponse.json({ url })
 }

@@ -9,7 +9,7 @@ Elegant AI citation generation. Paste an essay, choose a referencing style, and 
 - Vercel AI Gateway (DeepSeek V4 Flash + OpenAI text-embedding-3-small)
 - OpenAlex, PubMed, Exa, and Perplexity for plan-gated source discovery
 - Citation.js (CSL) for formatting
-- Stripe for Pro subscriptions and Cites top-ups
+- Lemon Squeezy for Pro subscriptions and Cites top-ups (Merchant of Record)
 
 ## Quick start
 
@@ -17,7 +17,7 @@ Elegant AI citation generation. Paste an essay, choose a referencing style, and 
 2. Run migration [`supabase/migrations/003_citation_app.sql`](supabase/migrations/003_citation_app.sql) in the Supabase SQL editor.
 3. Seed universities: `node scripts/seed-schools.mjs` (requires `SUPABASE_SERVICE_ROLE_KEY`).
 4. Enable Google + Email auth in Supabase; set redirect URL to `{APP_URL}/auth/callback`.
-5. Create the Pro monthly/annual recurring Prices plus three one-time Cites pack Prices, then set the `STRIPE_PRICE_PRO_*` and `STRIPE_PRICE_CITES_*` env vars. See `SETUP.md` for webhook events and Customer Portal configuration.
+5. Create Lemon Squeezy products/variants for Pro monthly/annual and Cites packs, then set the `LEMONSQUEEZY_*` env vars. See `SETUP.md` for webhook events and customer portal notes.
 6. `npm install && npm run dev`
 
 See [SETUP.md](SETUP.md) for full production setup.
@@ -31,7 +31,7 @@ See [SETUP.md](SETUP.md) for full production setup.
 | `/` | Citation chat |
 | `/c/[id]` | Past generation |
 | `/upgrade` | Basic / Pro comparison and subscription management |
-| `/cites` | Cites, Stripe packs, referrals, ads |
+| `/cites` | Cites, packs, referrals, ads |
 | `/leaderboard` | Global / School / Friends |
 | `/settings` | Profile, preferences, theme |
 

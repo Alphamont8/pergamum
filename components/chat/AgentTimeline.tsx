@@ -18,6 +18,8 @@ export type TimelineStep = {
 export type TimelineReasoning = {
   label: string
   busy?: boolean
+  /** One-line latest activity under Analyzing (analyzing phase only). */
+  detail?: string
 }
 
 export type TimelineQueueSentence = {
@@ -25,11 +27,7 @@ export type TimelineQueueSentence = {
   text: string
 }
 
-function truncate(text: string, max: number): string {
-  const t = text.trim()
-  if (t.length <= max) return t
-  return `${t.slice(0, max - 1)}…`
-}
+export type TimelineFeedMode = 'analyzing' | 'generating' | 'review'
 
 function SentenceQueue({
   sentences,
@@ -49,7 +47,7 @@ function SentenceQueue({
 
   return (
     <div className="agent-tl__queue">
-      <p className="agent-tl__queue-title">Sentences</p>
+      <p className="agent-tl__queue-title">Sentences Identified for Citing</p>
       <ul className="agent-tl__queue-list">
         {sentences.map((sentence) => {
           const state = live[sentence.index]
@@ -74,7 +72,7 @@ function SentenceQueue({
                   {statusLabel}
                 </span>
               </div>
-              <p className="agent-tl__chip-text">{truncate(sentence.text, 140)}</p>
+              <p className="agent-tl__chip-text">{sentence.text}</p>
               {status === 'failed' && state?.missReason ? (
                 <p className="agent-tl__chip-miss">{state.missReason}</p>
               ) : null}
@@ -112,13 +110,14 @@ function SentenceQueue({
   )
 }
 
-function TimerLabel({ label, busy }: TimelineReasoning) {
+function StatusLine({ label, detail, busy }: TimelineReasoning) {
   return (
     <div className="agent-tl__reasoning">
-      <span className="agent-tl__reasoning-label">
+      <p className="agent-tl__reasoning-label">
         {busy ? <span className="status-dot" aria-hidden /> : null}
-        {label}
-      </span>
+        <span className="agent-tl__reasoning-copy">{label}</span>
+      </p>
+      {detail ? <p className="agent-tl__live-line">{detail}</p> : null}
     </div>
   )
 }
@@ -126,6 +125,7 @@ function TimerLabel({ label, busy }: TimelineReasoning) {
 export function AgentTimeline({
   steps,
   reasoning,
+  feedMode = 'review',
   sentences = [],
   live = {},
   stages = {},
@@ -138,6 +138,8 @@ export function AgentTimeline({
 }: {
   steps: TimelineStep[]
   reasoning?: TimelineReasoning | null
+  /** analyzing = one status line; generating = sentences only; review = sentences + result steps */
+  feedMode?: TimelineFeedMode
   sentences?: TimelineQueueSentence[]
   live?: Record<number, LiveSentenceState>
   stages?: Record<number, CitationPipelineStage | 'searching'>
@@ -151,12 +153,14 @@ export function AgentTimeline({
 }) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const stickBottomRef = useRef(true)
+  const showSteps = feedMode === 'review' && steps.length > 0
+  const showSentences = feedMode !== 'analyzing' && sentences.length > 0
 
   useEffect(() => {
     const el = scrollRef.current
     if (!el || !stickBottomRef.current) return
     el.scrollTop = el.scrollHeight
-  }, [steps.length, steps[steps.length - 1]?.id, liveClockMs])
+  }, [steps.length, steps[steps.length - 1]?.id, liveClockMs, feedMode, reasoning?.detail])
 
   return (
     <aside className="agent-tl" aria-label="Agent Feed">
@@ -173,9 +177,12 @@ export function AgentTimeline({
           stickBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48
         }}
       >
-        {reasoning ? <TimerLabel {...reasoning} /> : null}
+        {feedMode === 'analyzing' && reasoning ? <StatusLine {...reasoning} /> : null}
+        {feedMode === 'review' && reasoning && !showSentences ? (
+          <StatusLine {...reasoning} />
+        ) : null}
 
-        {sentences.length > 0 ? (
+        {showSentences ? (
           <SentenceQueue
             sentences={sentences}
             live={live}
@@ -186,9 +193,19 @@ export function AgentTimeline({
           />
         ) : null}
 
-        {steps.length === 0 && !reasoning && sentences.length === 0 ? (
+        {feedMode === 'analyzing' && !reasoning ? (
           <p className="agent-tl__empty">Waiting to start…</p>
-        ) : (
+        ) : null}
+
+        {feedMode === 'generating' && !showSentences ? (
+          <p className="agent-tl__empty">Preparing sentences…</p>
+        ) : null}
+
+        {feedMode === 'review' && !showSteps && !showSentences && !reasoning ? (
+          <p className="agent-tl__empty">Waiting to start…</p>
+        ) : null}
+
+        {showSteps ? (
           <ol className="agent-tl__steps">
             {steps.map((step, i) => {
               const isLast = i === steps.length - 1
@@ -202,14 +219,14 @@ export function AgentTimeline({
                 >
                   <p className="agent-tl__step-msg">
                     {busy ? <span className="status-dot" aria-hidden /> : null}
-                    {step.message}
+                    <span className="agent-tl__step-copy">{step.message}</span>
                   </p>
                   {step.detail ? <p className="agent-tl__step-detail">{step.detail}</p> : null}
                 </li>
               )
             })}
           </ol>
-        )}
+        ) : null}
       </div>
 
       {footer ? (

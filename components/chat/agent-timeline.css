@@ -45,7 +45,7 @@
 .agent-tl__reasoning {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 
 .agent-tl__reasoning-head {
@@ -60,10 +60,24 @@
   align-items: center;
   gap: 8px;
   min-width: 0;
+  margin: 0;
   font-size: 13px;
   font-weight: 500;
   color: var(--fg-muted);
   line-height: 1.4;
+}
+
+.agent-tl__reasoning-copy,
+.agent-tl__step-copy {
+  min-width: 0;
+}
+
+.agent-tl__live-line {
+  margin: 0;
+  padding-left: 15px; /* status-dot (7px) + gap (8px) */
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--fg-subtle);
 }
 
 .agent-tl__reasoning-toggle {
@@ -135,11 +149,16 @@
 .agent-tl__step-msg {
   margin: 0;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 8px;
   font-size: 13.5px;
   line-height: 1.45;
   color: var(--fg);
+}
+
+.agent-tl__step-msg .status-dot,
+.agent-tl__reasoning-label .status-dot {
+  align-self: center;
 }
 
 .agent-tl__step.is-busy .agent-tl__step-msg {
@@ -236,9 +255,11 @@
 
 .agent-tl__chip-text {
   margin: 0;
-  font-size: 12.5px;
-  line-height: 1.4;
-  color: var(--fg-muted);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--fg);
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .agent-tl__chip-miss {

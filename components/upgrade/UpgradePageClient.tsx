@@ -138,7 +138,7 @@ export function UpgradePageClient({ initial }: { initial: UpgradeInitialState })
   const [busy, setBusy] = useState<'subscribe' | 'portal' | null>(null)
   const [message, setMessage] = useState<string | null>(
     initial.checkoutResult === 'success'
-      ? 'Payment received! Pro will switch on as soon as Stripe finishes confirming it.'
+      ? 'Payment received! Pro will switch on as soon as we finish confirming it.'
       : initial.checkoutResult === 'cancelled'
         ? 'No worries, checkout was canceled and nothing was charged.'
         : null,
@@ -332,7 +332,7 @@ export function UpgradePageClient({ initial }: { initial: UpgradeInitialState })
                 ? `You'll keep every Pro feature until ${periodEnd}, no rush.`
                 : periodEnd
                   ? `Your ${initial.subscription.billingInterval === 'year' ? 'annual' : 'monthly'} subscription renews on ${periodEnd}.`
-                  : 'Update your payment details or cancel whenever you like through Stripe.'}
+                  : 'Update your payment details or cancel whenever you like through the billing portal.'}
             </p>
           </div>
           <Button

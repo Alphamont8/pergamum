@@ -1,5 +1,5 @@
 /**
- * Grant a dev/admin account a full monthly Pro subscription (no Stripe required).
+ * Grant a dev/admin account a full monthly Pro subscription (no Lemon Squeezy required).
  *
  * Usage: node scripts/seed-dev-pro-subscription.mjs [username]
  * Default username: epstein
@@ -49,17 +49,17 @@ async function main() {
   }
 
   const userId = profile.id
-  const stripeSubscriptionId = `sub_dev_${username}_monthly`
-  const stripeCustomerId = `cus_dev_${username}`
+  const billingSubscriptionId = `sub_dev_${username}_monthly`
+  const billingCustomerId = `cus_dev_${username}`
   const { start: periodStart, end: periodEnd } = monthBounds()
-  const referenceId = grantReference(stripeSubscriptionId, periodStart)
+  const referenceId = grantReference(billingSubscriptionId, periodStart)
   const now = new Date().toISOString()
 
   const { error: subscriptionError } = await supabase.from('subscriptions').upsert(
     {
       user_id: userId,
-      stripe_subscription_id: stripeSubscriptionId,
-      stripe_customer_id: stripeCustomerId,
+      billing_subscription_id: billingSubscriptionId,
+      billing_customer_id: billingCustomerId,
       plan_tier: 'pro',
       billing_interval: 'month',
       status: 'active',
@@ -81,7 +81,7 @@ async function main() {
       default_suggest_corrections: true,
       pro_trial_ends_at: null,
       pro_trial_started_at: profile.pro_trial_started_at ?? now,
-      stripe_customer_id: stripeCustomerId,
+      billing_customer_id: billingCustomerId,
       updated_at: now,
     })
     .eq('id', userId)

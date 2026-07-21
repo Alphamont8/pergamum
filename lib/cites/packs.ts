@@ -14,7 +14,8 @@ export const CITES_PACKS: Record<
     label: string
     /** Short UX hint — typical essay uses ~15–25 Cites. */
     blurb: string
-    priceEnv: string
+    /** Env var holding the Lemon Squeezy variant ID. */
+    variantEnv: string
   }
 > = {
   '100': {
@@ -22,28 +23,28 @@ export const CITES_PACKS: Record<
     amountCents: 299,
     label: '100 Cites',
     blurb: '4-6 essays',
-    priceEnv: 'STRIPE_PRICE_CITES_100',
+    variantEnv: 'LEMONSQUEEZY_VARIANT_CITES_100',
   },
   '200': {
     cites: 200,
     amountCents: 499,
     label: '200 Cites',
     blurb: '8-12 essays',
-    priceEnv: 'STRIPE_PRICE_CITES_200',
+    variantEnv: 'LEMONSQUEEZY_VARIANT_CITES_200',
   },
   '400': {
     cites: 400,
     amountCents: 799,
     label: '400 Cites',
     blurb: '16-20 essays',
-    priceEnv: 'STRIPE_PRICE_CITES_400',
+    variantEnv: 'LEMONSQUEEZY_VARIANT_CITES_400',
   },
   '1000': {
     cites: 1000,
     amountCents: 1699,
     label: '1,000 Cites',
     blurb: '40+ essays',
-    priceEnv: 'STRIPE_PRICE_CITES_1000',
+    variantEnv: 'LEMONSQUEEZY_VARIANT_CITES_1000',
   },
 }
 
