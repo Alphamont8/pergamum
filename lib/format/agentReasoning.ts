@@ -1,4 +1,4 @@
-/** Normalize analysis reasoning for the Agent Feed. */
+/** Normalize analysis reasoning for the Citation Feed. */
 export function formatAnalysisReasoning(raw: string): string {
   let text = raw
     .replace(/\r\n/g, '\n')
@@ -49,7 +49,7 @@ const MISS_REASON_COPY: Record<string, string> = {
     'The closest match failed a second verification check.',
 }
 
-/** Humanize pipeline miss reasons for the Agent Feed. */
+/** Humanize pipeline miss reasons for the Citation Feed. */
 export function formatMissReason(raw?: string | null): string | null {
   if (!raw?.trim()) return null
   const trimmed = raw.trim()

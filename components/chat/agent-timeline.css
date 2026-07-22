@@ -1,4 +1,4 @@
-/* Agent Feed — live step timeline (right panel) */
+/* Citation Feed — phase tasks (right panel) */
 
 .agent-tl {
   display: flex;
@@ -42,7 +42,13 @@
   color: var(--fg-subtle);
 }
 
-.agent-tl__reasoning {
+.agent-tl__phases {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.agent-tl__phase {
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -61,14 +67,17 @@
   gap: 8px;
   min-width: 0;
   margin: 0;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--fg-muted);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fg);
   line-height: 1.4;
 }
 
-.agent-tl__reasoning-copy,
-.agent-tl__step-copy {
+.agent-tl__phase.is-busy .agent-tl__reasoning-label {
+  color: var(--fg);
+}
+
+.agent-tl__reasoning-copy {
   min-width: 0;
 }
 
@@ -80,6 +89,10 @@
   color: var(--fg-subtle);
 }
 
+.agent-tl__phase:not(.is-busy) .agent-tl__live-line {
+  padding-left: 0;
+}
+
 .agent-tl__reasoning-toggle {
   appearance: none;
   flex-shrink: 0;
@@ -88,6 +101,7 @@
   padding: 0;
   font: inherit;
   font-size: 12px;
+  font-weight: 500;
   color: var(--fg-subtle);
   cursor: pointer;
   transition: color 160ms ease;
@@ -115,66 +129,8 @@
   margin-bottom: 0;
 }
 
-/* Live step feed */
-.agent-tl__steps {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.agent-tl__step {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  align-items: start;
-}
-
-.agent-tl__step-body {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.agent-tl__step-detail {
-  margin: 0;
-  font-size: 12.5px;
-  line-height: 1.45;
-  color: var(--fg-subtle);
-}
-
-.agent-tl__step-msg {
-  margin: 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13.5px;
-  line-height: 1.45;
-  color: var(--fg);
-}
-
-.agent-tl__step-msg .status-dot,
 .agent-tl__reasoning-label .status-dot {
   align-self: center;
-}
-
-.agent-tl__step.is-busy .agent-tl__step-msg {
-  color: var(--fg-muted);
-}
-
-.agent-tl__step.is-found .agent-tl__step-msg {
-  color: var(--success);
-}
-
-.agent-tl__step.is-miss .agent-tl__step-msg {
-  color: var(--danger);
-}
-
-.agent-tl__step-tag {
-  display: none;
 }
 
 /* Sentence chips */
@@ -424,9 +380,5 @@
 
   .workspace-status {
     min-height: min(42vh, 24rem);
-  }
-
-  .agent-tl__step {
-    gap: 4px;
   }
 }

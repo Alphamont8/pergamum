@@ -21,7 +21,7 @@ import {
   settingsMatchDefaults,
 } from '@/lib/composer/draft'
 import type { GenerationSettings, SourceRecency, SourceTier } from '@/types'
-import { AgentTimeline, type TimelineFeedMode, type TimelineReasoning, type TimelineStep } from './AgentTimeline'
+import { AgentTimeline, type FeedPhaseTask } from './AgentTimeline'
 import { LiveEssayCanvas } from './LiveEssayCanvas'
 import type { ActivityLogEntry, BibChip, PossibleMatchChip } from './PipelineActivityRail'
 import { readApiErrorMessage, parseSseEventData } from '@/lib/http/apiError'
@@ -31,6 +31,8 @@ import { formatAnalysisReasoning } from '@/lib/format/agentReasoning'
 import {
   analyzeStepCopy,
   feedDoneCopy,
+  formatGenerationReasoning,
+  generationStageDetail,
   searchStepCopy,
 } from '@/lib/format/feedCopy'
 import { formatEssayForDisplay } from '@/lib/essay/format'
@@ -222,10 +224,13 @@ export function CitationChat() {
   const [possibleMatches, setPossibleMatches] = useState<Record<number, PossibleMatchChip[]>>(
     {},
   )
-  const [theaterStartedAt, setTheaterStartedAt] = useState(() => Date.now())
   const [analysisReasoning, setAnalysisReasoning] = useState<string | null>(null)
   const [analyzeDurationSec, setAnalyzeDurationSec] = useState<number | null>(null)
   const analyzeStartedAtRef = useRef<number | null>(null)
+  const [generateDurationSec, setGenerateDurationSec] = useState<number | null>(null)
+  const generateStartedAtRef = useRef<number | null>(null)
+  const [generateDetail, setGenerateDetail] = useState<string | null>(null)
+  const [generationReasoning, setGenerationReasoning] = useState<string | null>(null)
   const [liveClockMs, setLiveClockMs] = useState<number | null>(null)
   const [analysisStatus, setAnalysisStatus] = useState('')
   const [draftTitle, setDraftTitle] = useState<string | null>(null)
@@ -285,6 +290,9 @@ export function CitationChat() {
     setPossibleMatches({})
     setAnalysisReasoning(null)
     setAnalyzeDurationSec(null)
+    setGenerateDurationSec(null)
+    setGenerateDetail(null)
+    setGenerationReasoning(null)
     setAnalysisStatus('')
     setDraftTitle(null)
     lastAnalyzeKeyRef.current = null
@@ -566,7 +574,11 @@ export function CitationChat() {
     setLiveCitations([])
     setAnalysisReasoning(null)
     setAnalyzeDurationSec(null)
+    setGenerateDurationSec(null)
+    setGenerateDetail(null)
+    setGenerationReasoning(null)
     analyzeStartedAtRef.current = Date.now()
+    generateStartedAtRef.current = null
     logSeqRef.current = 0
     setTheaterLive({})
     setActiveIndexes([])
@@ -730,6 +742,11 @@ export function CitationChat() {
         dispatchLibrarySync({ action: 'refresh' })
       }
     } catch (err) {
+      if (analyzeStartedAtRef.current) {
+        setAnalyzeDurationSec(
+          Math.max(1, Math.round((Date.now() - analyzeStartedAtRef.current) / 1000)),
+        )
+      }
       setPhase('error')
       setError(err instanceof Error ? err.message : 'We couldn\u2019t analyze your draft.')
     } finally {
@@ -772,7 +789,10 @@ export function CitationChat() {
     setResult(null)
     setProgress({ current: 0, total: citesRequired || sentences.length })
     setStatusMessage('Searching for sources to back up your claims…')
-    setTheaterStartedAt(Date.now())
+    generateStartedAtRef.current = Date.now()
+    setGenerateDurationSec(null)
+    setGenerationReasoning(null)
+    setGenerateDetail(generationStageDetail('searching'))
     setActiveIndexes([])
     setSentenceStages({})
     setLiveBibliography([])
@@ -883,6 +903,7 @@ export function CitationChat() {
                 : searchStepCopy('searching', 1, progressTotal)
 
             setStatusMessage(copy.message)
+            setGenerateDetail(generationStageDetail(step))
             if (typeof data.current === 'number' && typeof data.total === 'number') {
               setProgress((p) => ({
                 current: data.current as number,
@@ -992,6 +1013,9 @@ export function CitationChat() {
               status === 'done' ? 'found' : 'miss',
               sentenceIndex,
             )
+            setGenerateDetail(
+              generationStageDetail(status === 'done' ? 'found' : 'miss'),
+            )
           }
           if (event === 'complete') {
             const payload = data.result as ResultPayload & { citesRefunded?: number }
@@ -1006,6 +1030,22 @@ export function CitationChat() {
             setResult(payload)
             setPhase('theater_done')
             setActiveIndexes([])
+            if (generateStartedAtRef.current) {
+              setGenerateDurationSec(
+                Math.max(1, Math.round((Date.now() - generateStartedAtRef.current) / 1000)),
+              )
+            }
+            const cited = payload.citations.filter((c) => c.status === 'done').length
+            const missed = payload.citations.filter((c) => c.status !== 'done').length
+            const done = feedDoneCopy()
+            setGenerateDetail(done.detail)
+            setGenerationReasoning(
+              formatGenerationReasoning({
+                cited,
+                missed,
+                total: payload.citations.length,
+              }),
+            )
             const refunded = payload.citesRefunded ?? 0
             setStatusMessage(
               refunded > 0
@@ -1034,6 +1074,11 @@ export function CitationChat() {
         }
       }
     } catch (err) {
+      if (generateStartedAtRef.current) {
+        setGenerateDurationSec(
+          Math.max(1, Math.round((Date.now() - generateStartedAtRef.current) / 1000)),
+        )
+      }
       setPhase('error')
       setError(err instanceof Error ? err.message : 'Citation generation didn\u2019t finish.')
     }
@@ -1148,72 +1193,117 @@ export function CitationChat() {
     [generationId, possibleMatches],
   )
 
-  const timelineReasoning = useMemo((): TimelineReasoning | null => {
+  const feedTasks = useMemo((): FeedPhaseTask[] => {
+    if (phase === 'idle') return []
+
+    const tasks: FeedPhaseTask[] = []
+    const analyzeLatest = activityLog.filter((e) => e.stage === 'analyze').at(-1)
+
     if (phase === 'analyzing') {
       const started = analyzeStartedAtRef.current
       const elapsedMs = started && liveClockMs ? Math.max(0, liveClockMs - started) : 0
       const secs = Math.floor(elapsedMs / 1000)
-      const latest = activityLog[activityLog.length - 1]
-      return {
+      tasks.push({
+        id: 'analyze',
         label: `Analyzing · ${secs}s`,
         busy: true,
-        detail: latest?.message || statusMessage || 'Reading your draft…',
-      }
-    }
-    if (phase === 'quoted' && analyzeDurationSec != null && sentences.length === 0) {
-      return { label: `Analyzed draft for ${analyzeDurationSec}s` }
-    }
-    return null
-  }, [activityLog, analyzeDurationSec, liveClockMs, phase, sentences.length, statusMessage])
-
-  const timelineFeedMode = useMemo((): TimelineFeedMode => {
-    if (phase === 'analyzing') return 'analyzing'
-    if (phase === 'generating') return 'generating'
-    return 'review'
-  }, [phase])
-
-  const timelineSteps = useMemo((): TimelineStep[] => {
-    if (phase === 'analyzing' || phase === 'generating') return []
-
-    const steps: TimelineStep[] = []
-
-    if (phase === 'theater_done') {
-      const done = feedDoneCopy()
-      steps.push({
-        id: 'done-result',
-        message: done.message,
-        detail: done.detail,
-        stage: 'found',
-        at: Date.now(),
+        detail:
+          analyzeLatest?.message ||
+          statusMessage ||
+          'Reading your draft',
       })
+      return tasks
     }
 
-    if (phase === 'error' && error) {
-      steps.push({
-        id: 'error-status',
-        message: "We couldn't finish.",
-        detail: error,
-        stage: 'miss',
-        at: Date.now(),
-      })
-    }
-
-    if (phase === 'quoted' && analysisReasoning) {
+    // Analysis finished (quoted / generating / done / error after analyze started).
+    if (
+      analyzeDurationSec != null ||
+      analysisReasoning ||
+      sentences.length > 0 ||
+      phase === 'quoted' ||
+      (phase === 'error' && generateStartedAtRef.current == null)
+    ) {
+      const analyzeFailed =
+        phase === 'error' && generateStartedAtRef.current == null && Boolean(error)
       const resultStep = analyzeStepCopy('result', {
         count: sentences.length,
         reasoning: analysisReasoning,
       })
-      steps.push({
-        id: 'analyze-result',
-        message: resultStep.message,
-        detail: resultStep.detail,
-        stage: 'analyze',
-        at: Date.now(),
+      const analyzeSecs = analyzeDurationSec ?? 0
+      tasks.push({
+        id: 'analyze',
+        label: analyzeFailed
+          ? analyzeSecs > 0
+            ? `Couldn't Finish · ${analyzeSecs}s`
+            : "Couldn't Finish"
+          : analyzeSecs > 0
+            ? `Analyzed · ${analyzeSecs}s`
+            : 'Analyzed',
+        busy: false,
+        detail: analyzeFailed ? error! : resultStep.message,
+        reasoning: analyzeFailed ? null : analysisReasoning || resultStep.detail,
       })
     }
 
-    return steps
-  }, [analysisReasoning, error, phase, sentences.length])
+    if (phase === 'generating') {
+      const started = generateStartedAtRef.current
+      const elapsedMs = started && liveClockMs ? Math.max(0, liveClockMs - started) : 0
+      const secs = Math.floor(elapsedMs / 1000)
+      tasks.push({
+        id: 'generate',
+        label: `Generating · ${secs}s`,
+        busy: true,
+        detail: generateDetail || generationStageDetail('searching'),
+      })
+      return tasks
+    }
+
+    if (phase === 'theater_done' || (generateDurationSec != null && generateStartedAtRef.current != null)) {
+      const done = feedDoneCopy()
+      const genSecs = generateDurationSec ?? 0
+      const failed = phase === 'error' && Boolean(error)
+      tasks.push({
+        id: 'generate',
+        label: failed
+          ? genSecs > 0
+            ? `Couldn't Finish · ${genSecs}s`
+            : "Couldn't Finish"
+          : genSecs > 0
+            ? `Generated · ${genSecs}s`
+            : 'Generated',
+        busy: false,
+        detail: failed ? error! : generateDetail || done.message,
+        reasoning: failed ? null : generationReasoning || done.detail,
+      })
+    } else if (phase === 'error' && error && generateStartedAtRef.current != null) {
+      tasks.push({
+        id: 'generate',
+        label: "Couldn't Finish",
+        busy: false,
+        detail: error,
+      })
+    }
+
+    return tasks
+  }, [
+    activityLog,
+    analysisReasoning,
+    analyzeDurationSec,
+    error,
+    generateDetail,
+    generateDurationSec,
+    generationReasoning,
+    liveClockMs,
+    phase,
+    sentences.length,
+    statusMessage,
+  ])
+
+  const showFeedSentences =
+    phase === 'quoted' ||
+    phase === 'theater_done' ||
+    phase === 'error' ||
+    phase === 'done'
 
   const onViewDraft = useCallback(() => {
     if (!generationId) return
@@ -1231,6 +1321,10 @@ export function CitationChat() {
     setActivityLog([])
     setLiveBibliography([])
     setPossibleMatches({})
+    setGenerateDurationSec(null)
+    setGenerateDetail(null)
+    setGenerationReasoning(null)
+    generateStartedAtRef.current = null
   }, [])
 
   const retrySentence = useCallback(
@@ -1374,12 +1468,11 @@ export function CitationChat() {
               </div>
             </section>
 
-            <section className="workspace-status" aria-label="Agent Feed">
+            <section className="workspace-status" aria-label="Citation Feed">
               <AgentTimeline
-                steps={timelineSteps}
-                reasoning={timelineReasoning}
-                feedMode={timelineFeedMode}
+                tasks={feedTasks}
                 liveClockMs={liveClockMs ?? undefined}
+                showSentences={showFeedSentences}
                 sentences={sentences.map((s) => ({ index: s.index, text: s.text }))}
                 live={theaterLive}
                 stages={sentenceStages}

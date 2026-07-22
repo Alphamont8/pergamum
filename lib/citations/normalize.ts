@@ -9,6 +9,33 @@ const JUNK_AUTHOR_RE =
 const PERSON_NAME_RE =
   /^[A-ZÀ-ÖØ-Þ][\p{L}'’.-]+(?:\s+[A-ZÀ-ÖØ-Þ][\p{L}'’.-]+){0,4}$/u
 
+const ENCYCLOPEDIA_HOST_RE =
+  /(^|\.)wikipedia\.org$|(^|\.)britannica\.com$|(^|\.)encyclopedia\.com$/i
+
+/** Wikipedia and similar reference works have no personal byline — cite the site/org. */
+export function isEncyclopediaUrl(url?: string | null): boolean {
+  if (!url) return false
+  try {
+    const host = new URL(url).hostname.toLowerCase().replace(/^www\./, '')
+    return ENCYCLOPEDIA_HOST_RE.test(host)
+  } catch {
+    return false
+  }
+}
+
+export function encyclopediaOrgAuthor(url?: string | null): {
+  authors: string
+  authorships: SourceAuthorship[]
+} | null {
+  if (!isEncyclopediaUrl(url)) return null
+  const site = cleanSiteName(undefined, url) ?? 'Wikipedia'
+  const name = formatTeamName(site)
+  return {
+    authors: name,
+    authorships: [{ name, literal: true }],
+  }
+}
+
 function titleCaseHost(host: string): string {
   const known: Record<string, string> = {
     'wikipedia.org': 'Wikipedia',
@@ -277,6 +304,36 @@ export function normalizePublicationDate(
  */
 export function normalizeSourceForCitation(source: SourceRecord): SourceRecord {
   const siteName = cleanSiteName(source.venue?.name ?? source.publisher ?? source.exa?.siteName, source.url)
+  const dateBits = normalizePublicationDate(source.publicationDate, source.year)
+  const title = cleanTitle(source.title, siteName)
+
+  const encyclopedia = encyclopediaOrgAuthor(source.url)
+  if (encyclopedia) {
+    return {
+      ...source,
+      title,
+      authors: encyclopedia.authors,
+      authorships: encyclopedia.authorships,
+      year: dateBits.year ?? source.year,
+      publicationDate: dateBits.publicationDate ?? source.publicationDate,
+      publisher: siteName ?? source.publisher,
+      venue: siteName
+        ? {
+            name: siteName,
+            type: source.venue?.type ?? (source.sourceKind === 'webpage' ? 'website' : source.venue?.type),
+            publisher: source.venue?.publisher,
+            issn: source.venue?.issn,
+          }
+        : source.venue,
+      exa: source.exa
+        ? {
+            ...source.exa,
+            siteName: siteName ?? source.exa.siteName,
+            publishedDate: dateBits.publicationDate ?? source.exa.publishedDate,
+          }
+        : source.exa,
+    }
+  }
 
   const fromAuthorshipPeople = (source.authorships ?? [])
     .map((a) => a.name)
@@ -306,9 +363,6 @@ export function normalizeSourceForCitation(source: SourceRecord): SourceRecord {
     authors = formatTeamName(siteName)
     authorships = [{ name: authors, literal: true }]
   }
-
-  const dateBits = normalizePublicationDate(source.publicationDate, source.year)
-  const title = cleanTitle(source.title, siteName)
 
   return {
     ...source,

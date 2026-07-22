@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { CitationPipelineStage } from '@/lib/cite/stages'
 import type { LiveSentenceState } from '@/lib/essay/liveSegments'
 import type { PossibleMatchChip } from './PipelineActivityRail'
@@ -15,19 +15,22 @@ export type TimelineStep = {
   busy?: boolean
 }
 
-export type TimelineReasoning = {
+/** One Analysis or Generation phase card in the Citation Feed. */
+export type FeedPhaseTask = {
+  id: 'analyze' | 'generate'
+  /** Bold main task, e.g. "Analyzing · 5s" or "Analyzed · 12s". */
   label: string
-  busy?: boolean
-  /** One-line latest activity under Analyzing (analyzing phase only). */
+  /** Overall subtask summary — never names a specific sentence. */
   detail?: string
+  busy?: boolean
+  /** When set and the phase is done, Show Reasoning is available. */
+  reasoning?: string | null
 }
 
 export type TimelineQueueSentence = {
   index: number
   text: string
 }
-
-export type TimelineFeedMode = 'analyzing' | 'generating' | 'review'
 
 function SentenceQueue({
   sentences,
@@ -110,22 +113,46 @@ function SentenceQueue({
   )
 }
 
-function StatusLine({ label, detail, busy }: TimelineReasoning) {
+function PhaseTaskCard({ task }: { task: FeedPhaseTask }) {
+  const [open, setOpen] = useState(false)
+  const canShowReasoning = Boolean(task.reasoning?.trim()) && !task.busy
+
+  useEffect(() => {
+    if (!canShowReasoning) setOpen(false)
+  }, [canShowReasoning, task.id])
+
   return (
-    <div className="agent-tl__reasoning">
-      <p className="agent-tl__reasoning-label">
-        {busy ? <span className="status-dot" aria-hidden /> : null}
-        <span className="agent-tl__reasoning-copy">{label}</span>
-      </p>
-      {detail ? <p className="agent-tl__live-line">{detail}</p> : null}
+    <div className={`agent-tl__phase ${task.busy ? 'is-busy' : ''}`.trim()}>
+      <div className="agent-tl__reasoning-head">
+        <p className="agent-tl__reasoning-label">
+          {task.busy ? <span className="status-dot" aria-hidden /> : null}
+          <span className="agent-tl__reasoning-copy">{task.label}</span>
+        </p>
+        {canShowReasoning ? (
+          <button
+            type="button"
+            className="agent-tl__reasoning-toggle"
+            aria-expanded={open}
+            onClick={() => setOpen((v) => !v)}
+          >
+            {open ? 'Hide Reasoning' : 'Show Reasoning'}
+          </button>
+        ) : null}
+      </div>
+      {task.detail ? <p className="agent-tl__live-line">{task.detail}</p> : null}
+      {open && task.reasoning ? (
+        <div className="agent-tl__reasoning-body">
+          {task.reasoning.split(/\n+/).map((para, i) => (
+            <p key={`${task.id}-r-${i}`}>{para}</p>
+          ))}
+        </div>
+      ) : null}
     </div>
   )
 }
 
 export function AgentTimeline({
-  steps,
-  reasoning,
-  feedMode = 'review',
+  tasks = [],
   sentences = [],
   live = {},
   stages = {},
@@ -135,11 +162,10 @@ export function AgentTimeline({
   footer,
   footerCentered = false,
   liveClockMs,
+  showSentences = false,
 }: {
-  steps: TimelineStep[]
-  reasoning?: TimelineReasoning | null
-  /** analyzing = one status line; generating = sentences only; review = sentences + result steps */
-  feedMode?: TimelineFeedMode
+  /** Analysis / Generation phase cards (primary Citation Feed content). */
+  tasks?: FeedPhaseTask[]
   sentences?: TimelineQueueSentence[]
   live?: Record<number, LiveSentenceState>
   stages?: Record<number, CitationPipelineStage | 'searching'>
@@ -148,24 +174,27 @@ export function AgentTimeline({
   pickingMatch?: number | null
   footer?: ReactNode
   footerCentered?: boolean
-  /** Forces re-render of the active step while analyzing/generating. */
+  /** Forces re-render while Analysis/Generation timers tick. */
   liveClockMs?: number
+  /** Show sentence chips (review / near-miss picks), not during live phases. */
+  showSentences?: boolean
 }) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const stickBottomRef = useRef(true)
-  const showSteps = feedMode === 'review' && steps.length > 0
-  const showSentences = feedMode !== 'analyzing' && sentences.length > 0
+  const queueVisible = showSentences && sentences.length > 0
+  const latestDetail = tasks[tasks.length - 1]?.detail
+  const latestLabel = tasks[tasks.length - 1]?.label
 
   useEffect(() => {
     const el = scrollRef.current
     if (!el || !stickBottomRef.current) return
     el.scrollTop = el.scrollHeight
-  }, [steps.length, steps[steps.length - 1]?.id, liveClockMs, feedMode, reasoning?.detail])
+  }, [tasks.length, latestDetail, latestLabel, liveClockMs, queueVisible])
 
   return (
-    <aside className="agent-tl" aria-label="Agent Feed">
+    <aside className="agent-tl" aria-label="Citation Feed">
       <header className="agent-tl__head">
-        <h2 className="agent-tl__title">Agent Feed</h2>
+        <h2 className="agent-tl__title">Citation Feed</h2>
       </header>
 
       <div
@@ -177,12 +206,19 @@ export function AgentTimeline({
           stickBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48
         }}
       >
-        {feedMode === 'analyzing' && reasoning ? <StatusLine {...reasoning} /> : null}
-        {feedMode === 'review' && reasoning && !showSentences ? (
-          <StatusLine {...reasoning} />
+        {tasks.length === 0 && !queueVisible ? (
+          <p className="agent-tl__empty">Waiting to start…</p>
         ) : null}
 
-        {showSentences ? (
+        {tasks.length > 0 ? (
+          <div className="agent-tl__phases">
+            {tasks.map((task) => (
+              <PhaseTaskCard key={task.id} task={task} />
+            ))}
+          </div>
+        ) : null}
+
+        {queueVisible ? (
           <SentenceQueue
             sentences={sentences}
             live={live}
@@ -191,41 +227,6 @@ export function AgentTimeline({
             onPick={onPickMatch}
             picking={pickingMatch}
           />
-        ) : null}
-
-        {feedMode === 'analyzing' && !reasoning ? (
-          <p className="agent-tl__empty">Waiting to start…</p>
-        ) : null}
-
-        {feedMode === 'generating' && !showSentences ? (
-          <p className="agent-tl__empty">Preparing sentences…</p>
-        ) : null}
-
-        {feedMode === 'review' && !showSteps && !showSentences && !reasoning ? (
-          <p className="agent-tl__empty">Waiting to start…</p>
-        ) : null}
-
-        {showSteps ? (
-          <ol className="agent-tl__steps">
-            {steps.map((step, i) => {
-              const isLast = i === steps.length - 1
-              const busy = Boolean(
-                step.busy || (isLast && step.busy !== false && liveClockMs != null),
-              )
-              return (
-                <li
-                  key={step.id}
-                  className={`agent-tl__step ${busy ? 'is-busy' : ''} ${step.stage === 'found' ? 'is-found' : ''} ${step.stage === 'miss' ? 'is-miss' : ''}`.trim()}
-                >
-                  <p className="agent-tl__step-msg">
-                    {busy ? <span className="status-dot" aria-hidden /> : null}
-                    <span className="agent-tl__step-copy">{step.message}</span>
-                  </p>
-                  {step.detail ? <p className="agent-tl__step-detail">{step.detail}</p> : null}
-                </li>
-              )
-            })}
-          </ol>
         ) : null}
       </div>
 

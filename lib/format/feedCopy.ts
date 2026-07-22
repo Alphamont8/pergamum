@@ -60,6 +60,28 @@ export function analyzeStepCopy(
   }
 }
 
+/** Overall generation subtask copy — never names a specific sentence. */
+export function generationStageDetail(
+  stage: CitationPipelineStage | 'searching' | 'analyze',
+): string {
+  const detailByStage: Record<CitationPipelineStage, string> = {
+    claim: 'Working out what each sentence is claiming.',
+    resolve: 'Checking whether you already named a source in the draft.',
+    reuse: 'Seeing whether an earlier match works here too.',
+    academic: 'Searching academic papers and journals.',
+    web: 'Searching news and trusted web sources.',
+    rank: 'Comparing the strongest matches.',
+    verify: 'Checking that the source really backs up the claim.',
+    found: 'Found a source that supports the claim.',
+    miss: "We couldn't find a source that clearly supports this claim.",
+  }
+
+  if (stage === 'searching' || stage === 'analyze') {
+    return 'Looking for sources that support each claim.'
+  }
+  return detailByStage[stage] ?? 'Looking for a source that fits this claim.'
+}
+
 export function searchStepCopy(
   stage: CitationPipelineStage | 'searching' | 'analyze',
   sentenceOrdinal: number,
@@ -67,11 +89,12 @@ export function searchStepCopy(
   options?: { sourceTitle?: string; missReason?: string | null },
 ): FeedStepCopy {
   const n = sentenceOrdinal
+  const detail = generationStageDetail(stage)
 
   if (stage === 'searching') {
     return {
       message: `Searching ${total} sentence${total === 1 ? '' : 's'}`,
-      detail: 'Looking for sources that support each claim.',
+      detail,
     }
   }
 
@@ -94,28 +117,9 @@ export function searchStepCopy(
   }
 
   const finding = total > 1 ? `Finding a source for Sentence ${n}` : 'Finding a source'
-  const detailByStage: Record<CitationPipelineStage, string> = {
-    claim: 'Working out what this sentence is claiming.',
-    resolve: 'Checking whether you already named a source in the draft.',
-    reuse: 'Seeing whether an earlier match works here too.',
-    academic: 'Searching academic papers and journals.',
-    web: 'Searching news and trusted web sources.',
-    rank: 'Comparing the strongest matches.',
-    verify: 'Checking that the source really backs up the claim.',
-    found: 'Found a source that supports the claim.',
-    miss: "We couldn't find a source that clearly supports this claim.",
-  }
-
-  if (stage === 'analyze') {
-    return {
-      message: finding,
-      detail: 'Looking for a source that fits this claim.',
-    }
-  }
-
   return {
     message: finding,
-    detail: detailByStage[stage] ?? 'Looking for a source that fits this claim.',
+    detail,
   }
 }
 
@@ -124,4 +128,30 @@ export function feedDoneCopy(): FeedStepCopy {
     message: 'Citations are ready',
     detail: 'Your in-text citations and bibliography are ready to review.',
   }
+}
+
+/** Compact generation summary for Show Reasoning. */
+export function formatGenerationReasoning(options: {
+  cited: number
+  missed: number
+  total: number
+}): string {
+  const { cited, missed, total } = options
+  if (total <= 0) {
+    return 'Your in-text citations and bibliography are ready to review.'
+  }
+  const parts: string[] = []
+  if (cited > 0) {
+    parts.push(`Cited ${cited} of ${total} sentence${total === 1 ? '' : 's'}.`)
+  }
+  if (missed > 0) {
+    parts.push(
+      `Couldn't find a solid source for ${missed} sentence${missed === 1 ? '' : 's'}.`,
+    )
+  }
+  if (!parts.length) {
+    parts.push(`Searched sources for ${total} sentence${total === 1 ? '' : 's'}.`)
+  }
+  parts.push('Your in-text citations and bibliography are ready to review.')
+  return parts.join(' ')
 }

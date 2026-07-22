@@ -4,7 +4,9 @@ import {
   normalizePublicationDate,
   cleanSiteName,
   cleanTitle,
+  encyclopediaOrgAuthor,
   formatTeamName,
+  isEncyclopediaUrl,
 } from '@/lib/citations/normalize'
 import { parseMetadataFromText } from '@/lib/enrichment/parsePageMetadata'
 import {
@@ -154,14 +156,16 @@ export async function fetchPageMetadata(
       url,
     )
 
+    const encyclopedia = isEncyclopediaUrl(url) ? encyclopediaOrgAuthor(url) : null
+
     meta = {
       title: cleanTitle(result.title, siteName),
-      authors,
-      authorships,
+      authors: encyclopedia?.authors ?? authors,
+      authorships: encyclopedia?.authorships ?? authorships,
       publishedDate,
       year,
       siteName,
-      organization: fromText.organization,
+      organization: encyclopedia?.authors ?? fromText.organization,
       summary: result.text?.slice(0, 800),
       text: result.text,
       highlights: result.highlights,
@@ -193,9 +197,12 @@ export async function enrichFromExa(source: SourceRecord): Promise<Partial<Sourc
   const meta = await fetchPageMetadata(source.url)
   if (!meta) return {}
 
-  const metaBits = meta.authors
-    ? normalizeAuthors(meta.authors)
-    : { authors: undefined, authorships: meta.authorships }
+  const encyclopedia = encyclopediaOrgAuthor(source.url)
+  const metaBits = encyclopedia
+    ? encyclopedia
+    : meta.authors
+      ? normalizeAuthors(meta.authors)
+      : { authors: undefined, authorships: meta.authorships }
   const existingBits = !metaBits.authors ? normalizeAuthors(source.authors) : null
   const authors = metaBits.authors || existingBits?.authors
   const authorships = metaBits.authorships || existingBits?.authorships || meta.authorships

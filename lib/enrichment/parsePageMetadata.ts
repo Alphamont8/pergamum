@@ -4,7 +4,9 @@
  */
 import {
   cleanSiteName,
+  encyclopediaOrgAuthor,
   formatTeamName,
+  isEncyclopediaUrl,
   looksLikePersonName,
   looksLikeTeamName,
   normalizeAuthors,
@@ -184,10 +186,44 @@ function parseLooseDate(head: string, preferHeadLines: string[]): {
  * Parse authors + dates from extracted article/PDF text.
  * Designed to be conservative: prefer labeled fields and cover-page patterns.
  */
+function parseEncyclopediaMetadata(
+  text: string,
+  url?: string | null,
+): ParsedPageMetadata {
+  const org = encyclopediaOrgAuthor(url)
+  if (!org) return {}
+
+  const head = text.slice(0, 8000)
+  const lines = head
+    .split(/\n+/)
+    .map((l) => l.replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+    .slice(0, 100)
+
+  let { publishedDate, year } = parseLabeledDate(lines)
+  if (!publishedDate && !year) {
+    const loose = parseLooseDate(head, lines)
+    publishedDate = loose.publishedDate
+    year = loose.year
+  }
+
+  return {
+    authors: org.authors,
+    authorships: org.authorships,
+    publishedDate,
+    year: year || publishedDate?.slice(0, 4),
+    organization: org.authors,
+  }
+}
+
 export function parseMetadataFromText(
   text: string,
   options?: { url?: string | null; title?: string | null },
 ): ParsedPageMetadata {
+  if (isEncyclopediaUrl(options?.url)) {
+    return parseEncyclopediaMetadata(text ?? '', options?.url)
+  }
+
   if (!text?.trim()) return {}
 
   const head = text.slice(0, 8000)
