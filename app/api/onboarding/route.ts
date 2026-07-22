@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
+import { applyDemoTesterCode, isDemoTesterCode } from '@/lib/billing/demoTesterCode'
 import { grantManualMonthlyProSubscription, isFullMonthlyProCode } from '@/lib/billing/manualProSubscription'
-import { creditCites, getReferralReward } from '@/lib/cites/ledger'
 import {
   clientIpFromRequest,
-  evaluateReferralEligibility,
   hashClientIp,
+  linkFirstReferralCode,
 } from '@/lib/cites/referrals'
 
 export async function POST(request: Request) {
@@ -58,14 +58,18 @@ export async function POST(request: Request) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // Referral Cites only at signup/onboarding — never on friend-code redeem later.
-  // Unlimited real referrals; genuineness gates block fake/self accounts.
+  // First friend/referral code only — Cites stay pending until the new account spends Cites.
   const code = body.referralCode?.trim().toUpperCase()
   let referralAwarded = false
+  let referralPending = false
   let referralSkipped: string | null = null
   let proGranted = false
+  let demoTesterApplied = false
 
-  if (code && isFullMonthlyProCode(code)) {
+  if (code && isDemoTesterCode(code)) {
+    const result = await applyDemoTesterCode(user.id)
+    if (result === 'applied') demoTesterApplied = true
+  } else if (code && isFullMonthlyProCode(code)) {
     await grantManualMonthlyProSubscription(user.id)
     proGranted = true
   } else if (code && /^[A-Z0-9]{6}$/.test(code)) {
@@ -75,65 +79,28 @@ export async function POST(request: Request) {
       .eq('referral_code', code)
       .maybeSingle()
 
-    if (referrer && referrer.id !== user.id) {
-      const ipHash = hashClientIp(clientIpFromRequest(request))
-      const eligibility = await evaluateReferralEligibility({
+    if (referrer) {
+      const linked = await linkFirstReferralCode({
         referrerId: referrer.id,
         refereeId: user.id,
+        code,
         refereeEmail: user.email,
         refereeEmailConfirmed: Boolean(user.email_confirmed_at),
-        ipHash,
+        ipHash: hashClientIp(clientIpFromRequest(request)),
+        friendshipSource: 'referral',
       })
-
-      if (!eligibility.ok) {
-        referralSkipped = eligibility.reason
-        // Still allow friendship without Cites for soft genuineness blocks.
-        if (eligibility.reason !== 'self' && eligibility.reason !== 'already_referred') {
-          const [a, b] =
-            referrer.id < user.id ? [referrer.id, user.id] : [user.id, referrer.id]
-          await service.from('friendships').upsert(
-            { user_a: a, user_b: b, source: 'referral' },
-            { onConflict: 'user_a,user_b' },
-          )
-        }
-      } else {
-        const reward = await getReferralReward()
-        await service.from('referrals').insert({
-          referrer_id: referrer.id,
-          referee_id: user.id,
-          code,
-          cites_awarded: true,
-          ip_hash: ipHash,
-        })
-        await creditCites({
-          userId: referrer.id,
-          delta: reward,
-          kind: 'referral',
-          referenceId: user.id,
-          note: 'Referral bonus',
-        })
-        await creditCites({
-          userId: user.id,
-          delta: reward,
-          kind: 'referral',
-          referenceId: referrer.id,
-          note: 'Referral welcome bonus',
-        })
-        const [a, b] =
-          referrer.id < user.id ? [referrer.id, user.id] : [user.id, referrer.id]
-        await service.from('friendships').upsert(
-          { user_a: a, user_b: b, source: 'referral' },
-          { onConflict: 'user_a,user_b' },
-        )
-        referralAwarded = true
-      }
+      if (linked.status === 'awarded') referralAwarded = true
+      else if (linked.status === 'pending') referralPending = true
+      else if (linked.status === 'skipped') referralSkipped = linked.reason
     }
   }
 
   return NextResponse.json({
     ok: true,
     referralAwarded,
+    referralPending,
     proGranted,
+    demoTesterApplied,
     ...(referralSkipped ? { referralSkipped } : {}),
   })
 }

@@ -188,7 +188,8 @@ export function LeaderboardClient({
               <div className="pg-title-copy lb-friends-panel__intro">
                 <h2>Add Friends</h2>
                 <p className="pg-muted">
-                  Share your code so friends show up on this leaderboard.
+                  Share your code so friends show up here. The first friend code on a new account
+                  unlocks 25 Cites each after they run a citation that uses Cites.
                 </p>
               </div>
               <div className="lb-friends-panel__grid">

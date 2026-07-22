@@ -15,7 +15,7 @@ export function planDisplayName(planTier: PlanTier): string {
 }
 
 /** Pro subscribers receive this many Cites each billing month. */
-export const PRO_MONTHLY_CITES = 300
+export const PRO_MONTHLY_CITES = 200
 
 /** Soft word cap for Basic-tier drafts (no cap on Pro). */
 export const BASIC_MAX_WORDS = 1000

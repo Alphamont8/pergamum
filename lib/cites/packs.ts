@@ -1,8 +1,9 @@
 /**
  * One-time Cites packs (Basic top-ups).
  *
- * Priced above Pro on a per-Cite basis so subscription stays the better deal for
- * regular writers. See docs/PRICING.md for the full rationale.
+ * Pack keys stay stable for Lemon Squeezy custom data / purchases.pack history.
+ * Cite amounts are half the key names so prices stay fee-friendly while
+ * subscription remains the better deal for regular writers. See docs/PRICING.md.
  */
 export type CitesPack = '100' | '200' | '400' | '1000'
 
@@ -19,31 +20,31 @@ export const CITES_PACKS: Record<
   }
 > = {
   '100': {
-    cites: 100,
+    cites: 50,
     amountCents: 299,
-    label: '100 Cites',
-    blurb: '4-6 essays',
+    label: '50 Cites',
+    blurb: '2-3 essays',
     variantEnv: 'LEMONSQUEEZY_VARIANT_CITES_100',
   },
   '200': {
-    cites: 200,
+    cites: 100,
     amountCents: 499,
-    label: '200 Cites',
-    blurb: '8-12 essays',
+    label: '100 Cites',
+    blurb: '4-6 essays',
     variantEnv: 'LEMONSQUEEZY_VARIANT_CITES_200',
   },
   '400': {
-    cites: 400,
+    cites: 200,
     amountCents: 799,
-    label: '400 Cites',
-    blurb: '16-20 essays',
+    label: '200 Cites',
+    blurb: '8-10 essays',
     variantEnv: 'LEMONSQUEEZY_VARIANT_CITES_400',
   },
   '1000': {
-    cites: 1000,
+    cites: 500,
     amountCents: 1699,
-    label: '1,000 Cites',
-    blurb: '40+ essays',
+    label: '500 Cites',
+    blurb: '20+ essays',
     variantEnv: 'LEMONSQUEEZY_VARIANT_CITES_1000',
   },
 }

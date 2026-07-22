@@ -11,6 +11,7 @@ import { formatBibliographyEntry, formatInTextCitation } from '@/lib/citations'
 import { claimQueryFromAnalyzed, type AnalyzedSentence as CiteAnalyzedSentence } from '@/lib/cite/analyze'
 import { isLlmConfigured } from '@/lib/ai/provider'
 import { creditCites, getUserCitesBalance } from '@/lib/cites/ledger'
+import { fulfillPendingReferralForReferee } from '@/lib/cites/referrals'
 import {
   applyCitationEntitlements,
   getUserCitationEntitlements,
@@ -122,6 +123,15 @@ export async function POST(request: Request) {
         })
         spent = true
         citesSpent = citesRequired
+
+        try {
+          await fulfillPendingReferralForReferee(userId)
+        } catch (referralErr) {
+          console.warn(
+            '[cite/generate] pending referral payout failed',
+            referralErr instanceof Error ? referralErr.message : referralErr,
+          )
+        }
 
         await service
           .from('generations')

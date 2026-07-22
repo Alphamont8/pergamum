@@ -482,10 +482,16 @@
   flex-direction: column;
   gap: 0;
   margin-top: 14px;
+  --ledger-scrollbar-pad: 14px;
+}
+
+.ledger-table__body {
   max-height: min(22rem, 48vh);
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
+  padding-inline-end: var(--ledger-scrollbar-pad);
+  margin-inline-end: calc(-1 * var(--ledger-scrollbar-pad));
 }
 
 .ledger-table__head,
@@ -494,6 +500,7 @@
   grid-template-columns: minmax(8.5rem, 11rem) minmax(0, 1fr) minmax(5.5rem, 7.5rem) 4.5rem;
   gap: 12px 16px;
   align-items: center;
+  padding-inline-end: var(--ledger-scrollbar-pad);
 }
 
 .ledger-table__head {

@@ -39,8 +39,8 @@ See [SETUP.md](SETUP.md) for full production setup.
 
 1 Cite ≈ one sentence digested + one source found.
 
-- Packs: 100 / 200 / 400 / 1,000 (see [docs/PRICING.md](docs/PRICING.md))
-- Pro: $5.99/mo or ~$4.99/mo annual — **300** new Cites monthly
-- Signup grant: **100 Cites** during Demo; **50 Cites** at release (`reward_config.signup_grant_cites`)
-- Referral: **50 Cites each** for new signups only (unlimited real referrals; genuineness gates apply)
+- Packs: 50 / 100 / 200 / 500 Cites at $2.99 / $4.99 / $7.99 / $16.99 (SKU keys `100`/`200`/`400`/`1000`; see [docs/PRICING.md](docs/PRICING.md))
+- Pro: $5.99/mo or ~$4.99/mo annual — **200** new Cites monthly
+- Signup grant: **50 Cites** (`reward_config.signup_grant_cites`)
+- Referral: **25 Cites each** on the referee's first friend code, after they spend Cites on a citation run (signup or later redeem; unlimited real referrals; genuineness gates apply)
 - Sign-in required to use the app (history, Cites, leaderboard, settings)

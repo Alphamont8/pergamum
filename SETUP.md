@@ -83,23 +83,26 @@ Lemon Squeezy is the Merchant of Record (hosted checkout, tax remittance, custom
 3. Create an API key and note your **store ID**.
 4. Add a webhook → `POST /api/webhooks/lemon-squeezy` with the signing secret.
 
-| Product | Price | Env |
-|---------|-------|-----|
-| Pro Monthly (subscription) | $5.99/month | `LEMONSQUEEZY_VARIANT_PRO_MONTHLY` |
-| Pro Annual (subscription) | $54.89/year ($4.99/mo × 12) | `LEMONSQUEEZY_VARIANT_PRO_ANNUAL` |
-| 100 Cites (one-time) | $2.99 | `LEMONSQUEEZY_VARIANT_CITES_100` |
-| 200 Cites (one-time) | $4.99 | `LEMONSQUEEZY_VARIANT_CITES_200` |
-| 400 Cites (one-time) | $7.99 | `LEMONSQUEEZY_VARIANT_CITES_400` |
-| 1,000 Cites (one-time) | $16.99 | `LEMONSQUEEZY_VARIANT_CITES_1000` |
+| Product | Price | Cites | Env |
+|---------|-------|-------|-----|
+| Pro Monthly (subscription) | $5.99/month | 200/month | `LEMONSQUEEZY_VARIANT_PRO_MONTHLY` |
+| Pro Annual (subscription) | $54.89/year ($4.99/mo × 12) | 200/month | `LEMONSQUEEZY_VARIANT_PRO_ANNUAL` |
+| 50 Cites (one-time) | $2.99 | 50 | `LEMONSQUEEZY_VARIANT_CITES_100` |
+| 100 Cites (one-time) | $4.99 | 100 | `LEMONSQUEEZY_VARIANT_CITES_200` |
+| 200 Cites (one-time) | $7.99 | 200 | `LEMONSQUEEZY_VARIANT_CITES_400` |
+| 500 Cites (one-time) | $16.99 | 500 | `LEMONSQUEEZY_VARIANT_CITES_1000` |
 
 Also set `LEMONSQUEEZY_API_KEY`, `LEMONSQUEEZY_STORE_ID`, and `LEMONSQUEEZY_WEBHOOK_SECRET`.
 
+Rename Lemon Squeezy product titles to match Cite amounts (50 / 100 / 200 / 500). Env keys and
+variant IDs stay the same; the app grants Cites from `lib/cites/packs.ts`, not from the LS title.
+
 Annual is billed as a single yearly charge at the $4.99/mo effective rate. Pro grants
-300 Cites at activation and every month after that (unused monthly allotment resets; pack
+200 Cites at activation and every month after that (unused monthly allotment resets; pack
 top-ups never expire). Annual subscribers receive the intervening monthly grants from the
-`grant-pro-monthly-cites` Supabase Cron job (migration `012`, amount aligned to 300 in
-migration `020`). The first Cites pack purchase unlocks a one-time 14-day Pro **features**
-trial (no 300 allotment, no auto-charge) via migration `021`.
+`grant-pro-monthly-cites` Supabase Cron job (migration `012`, amount aligned to 200 in
+migration `024`). The first Cites pack purchase unlocks a one-time 14-day Pro **features**
+trial (no 200 allotment, no auto-charge) via migration `021`.
 
 See [docs/PRICING.md](docs/PRICING.md) for pack sizing rationale.
 
@@ -141,18 +144,27 @@ Apply migration `004_cites_security_guest.sql` after `003` if you still need the
 
 ### Signup grants
 
-| Stage | `signup_grant_cites` |
-|-------|----------------------|
-| **Demo** (current) | **100** |
-| **Release** | **50** — set via `reward_config` before launch |
+All new accounts receive **50 Cites** via `reward_config.signup_grant_cites` (see migration `025_deactivate_demo_signup_grant.sql`).
+
+### Demo tester code
+
+Redeem **`TRYPGM`** (or set `DEMO_TESTER_CODE` for an alias) on Cites / Leaderboard or at onboarding:
+
+- **+250** permanent Cites
+- **30-day Pro trial** at no charge (Pro features + one **200**-Cite monthly allotment)
+
+One redemption per account. Implementation: `lib/billing/demoTesterCode.ts`.
 
 ### Referrals
 
-Referral reward is **50 Cites each**, awarded only at signup/onboarding (not when redeeming a friend code later). There is **no** lifetime or daily cap on how many real people someone can refer.
+Referral reward is **25 Cites each**. The first eligible friend code (at signup or later in Cites /
+Leaderboard) creates a pending referral; both sides are paid after the referee spends Cites on a
+citation run. Extra friend codes only add friendship. There is **no** lifetime or daily cap on how
+many real people someone can refer.
 
 Genuineness gates in `lib/cites/referrals.ts` (column `ip_hash` from migration `017`):
 
 - Verified email required on the new account
 - Disposable / throwaway email domains blocked
-- One referral award per referee account
+- One referral award per referee account (first friend code only)
 - Same referrer + same hashed IP cannot earn another bonus within 48 hours (stops self-made sockpuppets; different friends on campus Wi‑Fi are fine)

@@ -10,7 +10,7 @@ export async function getReferralReward(): Promise<number> {
     .maybeSingle()
   const raw = data?.value
   const n = typeof raw === 'number' ? raw : Number(raw)
-  return Number.isFinite(n) && n > 0 ? n : 50
+  return Number.isFinite(n) && n > 0 ? n : 25
 }
 
 /** Credit Cites only via ledger (service role). Never update cites_balance directly from APIs. */

@@ -11,6 +11,7 @@ import { formatCitationJobsInDocumentOrder, type CitationJob } from '@/lib/cite/
 import { claimQueryFromAnalyzed, type AnalyzedSentence } from '@/lib/cite/analyze'
 import { isLlmConfigured } from '@/lib/ai/provider'
 import { creditCites, getUserCitesBalance } from '@/lib/cites/ledger'
+import { fulfillPendingReferralForReferee } from '@/lib/cites/referrals'
 import {
   applyCitationEntitlements,
   getUserCitationEntitlements,
@@ -104,6 +105,15 @@ export async function POST(request: Request) {
     referenceId: `${generationId}:retry:${sentenceIndex}:${Date.now()}`,
     note: `Retried citation for sentence ${sentenceIndex + 1}.`,
   })
+
+  try {
+    await fulfillPendingReferralForReferee(user.id)
+  } catch (referralErr) {
+    console.warn(
+      '[cite/retry] pending referral payout failed',
+      referralErr instanceof Error ? referralErr.message : referralErr,
+    )
+  }
 
   const priorResult = (generation.result ?? {}) as {
     citations?: Array<{

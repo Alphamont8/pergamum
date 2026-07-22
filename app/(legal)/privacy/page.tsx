@@ -149,8 +149,9 @@ export default function PrivacyPage() {
           <h2>Referrals and Leaderboards</h2>
           <div className="legal-stack">
             <p>
-              If you share a referral code or link, we associate successful signups with your account to
-              award Cites and connect friends where the product supports it. Leaderboards may display
+              If you share a referral code or link, we associate successful first-code redemptions with your account to
+              award Cites after the referred account spends Cites on a citation run, and to connect friends where the
+              product supports it. Leaderboards may display
               usernames, referral or activity scores, and similar public profile fields you choose to show.
             </p>
             <p>

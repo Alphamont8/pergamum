@@ -621,7 +621,7 @@ export function CitesPageClient({
           <div className="cites-pro-compare">
             <div className="cites-pro-compare__option">
               <span className="cites-pro-compare__label">Pack</span>
-              <strong>100 Cites · $2.99 once</strong>
+              <strong>50 Cites · $2.99 once</strong>
               <span className="pg-subtle">
                 {trialEligible
                   ? `Includes ${PRO_FEATURES_TRIAL_DAYS}-day Pro features trial`
@@ -687,9 +687,10 @@ export function CitesPageClient({
         <div className="pg-title-copy cites-refer-panel__intro">
           <h2>Refer a Friend</h2>
           <p className="pg-muted">
-            Pass along your link or code. When someone new signs up with it, you both walk away
-            with 50 free Cites. If a friend already has an account, they can still use your code to
-            connect, just without the Cites bonus.
+            Pass along your link or code. When a friend uses it as their first friend code and then
+            runs a citation that uses Cites, you both get 25 free Cites. They can enter it at signup
+            or later here. Extra friend codes after the first still connect you, just without the
+            bonus.
           </p>
         </div>
         <div className="cites-refer-panel__grid">
@@ -755,10 +756,12 @@ export function CitesPageClient({
             <span role="columnheader">Expiry</span>
             <span role="columnheader">Cites</span>
           </div>
-          {renderLedgerRows(
-            filteredLedger,
-            historyFilter === 'all' ? 'No activity yet.' : 'No entries for this filter.',
-          )}
+          <div className="ledger-table__body">
+            {renderLedgerRows(
+              filteredLedger,
+              historyFilter === 'all' ? 'No activity yet.' : 'No entries for this filter.',
+            )}
+          </div>
         </div>
 
         {historyFilter === 'all' && purchases.length > 0 ? (

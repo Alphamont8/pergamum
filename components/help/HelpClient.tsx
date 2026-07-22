@@ -16,7 +16,7 @@ const FAQS = [
   },
   {
     q: 'What is the free Pro features trial?',
-    a: 'Your first Cites pack purchase unlocks 14 days of Pro features. Deeper verification, faster generation, every referencing style, exports, and specialty databases. The trial does not include the 300 monthly Cites allotment, and it never auto-converts or charges you when it ends. Pack Cites you buy still never expire.',
+    a: 'Your first Cites pack purchase unlocks 14 days of Pro features. Deeper verification, faster generation, every referencing style, exports, and specialty databases. The trial does not include the 200 monthly Cites allotment, and it never auto-converts or charges you when it ends. Pack Cites you buy still never expire.',
   },
   {
     q: 'Do pack Cites expire?',
@@ -44,7 +44,7 @@ const FAQS = [
   },
   {
     q: 'How do referrals work?',
-    a: 'Share your referral code or link with a friend. When a real person confirms their email and finishes signup with it, you both get 50 Cites. There is no limit on how many friends you can refer. Existing users can still redeem a code to connect as friends, though no extra Cites are awarded in that case.',
+    a: 'Share your referral code or link with a friend. When they use it as their first friend code — at signup or later in Cites or Leaderboard — and then run a citation that uses Cites, you both get 25 Cites. Extra friend codes after the first still connect you as friends, but only that first code can earn the bonus.',
   },
 ]
 
