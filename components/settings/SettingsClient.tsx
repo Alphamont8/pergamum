@@ -210,8 +210,10 @@ export function SettingsClient({
       }
       if (periodEnd) {
         const interval =
-          initial.subscription?.billingInterval === 'year' ? 'Annual' : 'Monthly'
-        return `Renews ${periodEnd} · ${interval}`
+          initial.subscription?.billingInterval === 'semester' ? 'Semester' : 'Monthly'
+        return initial.subscription?.billingInterval === 'semester'
+          ? `Ends ${periodEnd} · ${interval}`
+          : `Renews ${periodEnd} · ${interval}`
       }
       return 'Manage billing on Plan, or open Cites for packs and refills.'
     }

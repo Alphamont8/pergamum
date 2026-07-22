@@ -171,6 +171,64 @@
   }
 }
 
+.upgrade-pack-lead {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px 18px;
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border-hairline));
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--accent) 4%, var(--bg-elevated));
+}
+
+.upgrade-pack-lead__card {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px 16px;
+  align-items: center;
+}
+
+.upgrade-pack-lead__name {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 500;
+}
+
+.upgrade-pack-lead__price {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 500;
+  letter-spacing: -0.03em;
+  justify-self: end;
+}
+
+.upgrade-pack-lead__card .pg-btn {
+  grid-column: 1 / -1;
+  justify-self: start;
+}
+
+.upgrade-pack-lead__more {
+  grid-column: 1 / -1;
+  font-size: 13px;
+  color: var(--fg-muted);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.upgrade-pro-intro {
+  margin-top: 8px;
+}
+
+@media (max-width: 640px) {
+  .upgrade-pack-lead__card {
+    grid-template-columns: 1fr;
+  }
+
+  .upgrade-pack-lead__price {
+    justify-self: start;
+  }
+}
+
 .upgrade-status {
   display: flex;
   align-items: center;
@@ -212,6 +270,66 @@
   padding: 8px 13px;
   font-size: 13px;
   transition: color 160ms ease, background 160ms ease;
+}
+
+.upgrade-billing-toggle__label {
+  display: block;
+}
+
+.compare-promo-tag {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  margin-top: 6px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1.35;
+  text-transform: uppercase;
+  color: var(--fg-muted);
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+  border: 1px solid var(--border-hairline);
+}
+
+.compare-promo-tag--accent {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--border-hairline));
+}
+
+.compare-table__head-pro {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.compare-group__value {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+  color: var(--fg-muted);
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.compare-group__value-main {
+  display: block;
+}
+
+.compare-group__note {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--fg-subtle);
+}
+
+.compare-group__value .compare-promo-tag {
+  margin-top: 6px;
 }
 
 .upgrade-billing-toggle button:hover,
@@ -462,12 +580,6 @@
 
 .compare-group__feature {
   color: var(--fg);
-  font-size: 14px;
-  line-height: 1.4;
-}
-
-.compare-group__value {
-  color: var(--fg-muted);
   font-size: 14px;
   line-height: 1.4;
 }

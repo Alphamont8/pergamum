@@ -16,7 +16,7 @@ const FAQS = [
   },
   {
     q: 'What is the free Pro features trial?',
-    a: 'Your first Cites pack purchase unlocks 14 days of Pro features. Deeper verification, faster generation, every referencing style, exports, and specialty databases. The trial does not include the 200 monthly Cites allotment, and it never auto-converts or charges you when it ends. Pack Cites you buy still never expire.',
+    a: 'Your first Cites pack purchase (100, 200, or 500) unlocks 7 days of Pro features. Deeper verification, faster generation, every referencing style, exports, and specialty databases. The trial does not include the 200 monthly Cites allotment, and it never auto-converts or charges you when it ends. Pack Cites you buy still never expire.',
   },
   {
     q: 'Do pack Cites expire?',

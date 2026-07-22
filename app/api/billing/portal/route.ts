@@ -27,10 +27,11 @@ export async function POST() {
     return NextResponse.json({ error: 'No billing account was found.' }, { status: 404 })
   }
 
-  // Manual / seed subscriptions have no Lemon portal.
+  // Manual / seed / semester subscriptions have no Lemon portal.
   if (
     subscription.billing_subscription_id.startsWith('sub_manual_') ||
-    subscription.billing_subscription_id.startsWith('sub_dev_')
+    subscription.billing_subscription_id.startsWith('sub_dev_') ||
+    subscription.billing_subscription_id.startsWith('sem_ls_')
   ) {
     return NextResponse.json(
       { error: 'This Pro plan is managed outside of checkout.' },

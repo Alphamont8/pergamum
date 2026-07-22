@@ -20,19 +20,26 @@ export const PRO_MONTHLY_CITES = 200
 /** Soft word cap for Basic-tier drafts (no cap on Pro). */
 export const BASIC_MAX_WORDS = 1000
 
+/** Semester Pro duration (4 months). */
+export const SEMESTER_PRO_DAYS = 120
+
+/** Semester Pro one-time price in cents ($19.99). */
+export const SEMESTER_PRO_AMOUNT_CENTS = 1999
+
 export const PRO_PRICING = {
   month: {
     label: 'Monthly',
-    displayMonthlyCents: 599,
+    displayMonthlyCents: 699,
     variantEnv: 'LEMONSQUEEZY_VARIANT_PRO_MONTHLY',
   },
-  year: {
-    label: 'Annual',
-    /** Effective monthly rate when billed annually ($4.99/mo × 12). */
-    displayMonthlyCents: 499,
-    /** Total annual charge in cents ($54.89). */
-    displayAnnualCents: 5489,
-    variantEnv: 'LEMONSQUEEZY_VARIANT_PRO_ANNUAL',
+  semester: {
+    label: 'Semester',
+    /** Effective monthly rate when billed as a semester pass ($19.99 / 4). */
+    displayMonthlyCents: 500,
+    /** Total semester charge in cents ($19.99). */
+    displayTotalCents: SEMESTER_PRO_AMOUNT_CENTS,
+    days: SEMESTER_PRO_DAYS,
+    variantEnv: 'LEMONSQUEEZY_VARIANT_PRO_SEMESTER',
   },
 } as const satisfies Record<
   BillingInterval,
@@ -40,33 +47,63 @@ export const PRO_PRICING = {
     label: string
     displayMonthlyCents: number
     variantEnv: string
-    displayAnnualCents?: number
+    displayTotalCents?: number
+    days?: number
   }
 >
 
-/** Default checkout interval — annual effective rate is the headline Pro price. */
-export const DEFAULT_PRO_BILLING_INTERVAL: BillingInterval = 'year'
+/** Default checkout interval — Semester is the headline Pro offer. */
+export const DEFAULT_PRO_BILLING_INTERVAL: BillingInterval = 'semester'
 
-/** Display order for billing toggles (annual first). */
-export const PRO_BILLING_INTERVAL_ORDER: BillingInterval[] = ['year', 'month']
+/** Display order for billing toggles (semester first). */
+export const PRO_BILLING_INTERVAL_ORDER: BillingInterval[] = ['semester', 'month']
 
 export function formatProPrice(cents: number): string {
   return (cents / 100).toFixed(2)
 }
 
-/** Headline Pro price: $4.99/mo when billed annually. */
+/** Headline Pro price: $6.99/mo monthly. */
 export function proHeadlineMonthlyPrice(): string {
-  return formatProPrice(PRO_PRICING.year.displayMonthlyCents)
+  return formatProPrice(PRO_PRICING.month.displayMonthlyCents)
 }
 
-export function proAnnualBillPrice(): string {
-  return formatProPrice(PRO_PRICING.year.displayAnnualCents ?? 5489)
+export function proSemesterBillPrice(): string {
+  return formatProPrice(PRO_PRICING.semester.displayTotalCents ?? SEMESTER_PRO_AMOUNT_CENTS)
+}
+
+/** Effective monthly rate for Semester ($5.00/mo). */
+export function proSemesterEffectiveMonthlyPrice(): string {
+  return formatProPrice(PRO_PRICING.semester.displayMonthlyCents)
+}
+
+/** Four months of Monthly Pro at list price (for savings callouts). */
+export function fourMonthsMonthlyTotalCents(): number {
+  return PRO_PRICING.month.displayMonthlyCents * 4
+}
+
+/** Rounded percent saved vs paying Monthly for four months. */
+export function semesterSavingsPercent(): number {
+  const full = fourMonthsMonthlyTotalCents()
+  if (full <= 0) return 0
+  return Math.round(((full - SEMESTER_PRO_AMOUNT_CENTS) / full) * 100)
+}
+
+export function semesterSavingsLabel(): string {
+  return `Save ${semesterSavingsPercent()}%`
 }
 
 export interface PlanComparisonRow {
   label: string
   basic: string
   pro: string
+  /** Short promo line under the Basic cell (comparison table only). */
+  basicNote?: string
+  /** Short promo line under the Pro cell (comparison table only). */
+  proNote?: string
+  /** Pill tag on the Basic column. */
+  basicTag?: string
+  /** Pill tag on the Pro column. */
+  proTag?: string
   /** Both plans offer the same capability. */
   shared?: boolean
 }
@@ -81,15 +118,15 @@ export const PLAN_COMPARISON_SECTIONS: PlanComparisonSection[] = [
     title: 'CITES & BILLING',
     rows: [
       {
-        label: 'Monthly Cites',
-        basic: 'No monthly allotment',
-        pro: `${PRO_MONTHLY_CITES} per month allotment`,
+        label: 'Pro Features',
+        basic: 'Basic features only',
+        basicTag: '7-Day Pro Trial on First Pack',
+        pro: 'Every Pro feature',
       },
       {
-        label: 'Cites Top-Ups',
-        basic: 'One-time packs',
-        pro: 'One-time packs',
-        shared: true,
+        label: 'Allotment',
+        basic: 'None',
+        pro: `${PRO_MONTHLY_CITES} per month`,
       },
       {
         label: 'Ads',
@@ -209,4 +246,8 @@ export function planFromVariantId(
     }
   }
   return null
+}
+
+export function isSemesterBillingInterval(interval: unknown): interval is 'semester' {
+  return interval === 'semester'
 }

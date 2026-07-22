@@ -1,4 +1,11 @@
-import { PRO_MONTHLY_CITES, proHeadlineMonthlyPrice } from '@/lib/billing/plans'
+import {
+  PRO_MONTHLY_CITES,
+  proHeadlineMonthlyPrice,
+  proSemesterBillPrice,
+  semesterSavingsLabel,
+} from '@/lib/billing/plans'
+import { PRO_FEATURES_TRIAL_DAYS } from '@/lib/billing/proTrial.shared'
+import { CITES_PACKS, LEAD_CITES_PACK } from '@/lib/cites/packs'
 
 export type ProUpsellFeature =
   | 'styles'
@@ -21,7 +28,9 @@ export interface ProUpsellCopy {
 }
 
 export function proUpsellCopy(feature: ProUpsellFeature, detail?: string): ProUpsellCopy {
-  const annualHighlight = `From $${proHeadlineMonthlyPrice()}/mo billed annually · ${PRO_MONTHLY_CITES} Cites every month.`
+  const lead = CITES_PACKS[LEAD_CITES_PACK]
+  const proHighlight = `Semester Pro $${proSemesterBillPrice()} (${semesterSavingsLabel().toLowerCase()}), or $${proHeadlineMonthlyPrice()}/mo Monthly. ${PRO_MONTHLY_CITES} Cites every month.`
+  const packHint = `Or top up with ${lead.label} for $${(lead.amountCents / 100).toFixed(2)}.`
   switch (feature) {
     case 'styles':
       return {
@@ -73,14 +82,14 @@ export function proUpsellCopy(feature: ProUpsellFeature, detail?: string): ProUp
       return {
         title: 'Search Medical Databases',
         body: 'Pro adds PubMed and related medical databases when your essay is about health or biomedicine.',
-        highlight: annualHighlight,
+        highlight: proHighlight,
         cta: 'Compare Plans',
       }
     case 'legal':
       return {
         title: 'Search Legal Databases',
         body: 'Pro adds US-focused legal databases for case law and policy writing. Pairs well with Bluebook and OSCOLA.',
-        highlight: annualHighlight,
+        highlight: proHighlight,
         cta: 'Compare Plans',
       }
     case 'depth':
@@ -100,8 +109,8 @@ export function proUpsellCopy(feature: ProUpsellFeature, detail?: string): ProUp
     default:
       return {
         title: 'Upgrade to Pro',
-        body: `Pro adds ${PRO_MONTHLY_CITES} Cites every month, deeper verification, faster generation, every referencing style, exports, and specialty databases. Or top up Cites once to try Pro features free for 14 days. We never auto-charge when a trial ends.`,
-        highlight: annualHighlight,
+        body: `Pro adds ${PRO_MONTHLY_CITES} Cites every month, deeper verification, faster generation, every referencing style, exports, and specialty databases. ${packHint} Your first pack (any size) unlocks Pro features free for ${PRO_FEATURES_TRIAL_DAYS} days. We never auto-charge when a trial ends.`,
+        highlight: proHighlight,
         cta: 'Compare Plans',
       }
   }

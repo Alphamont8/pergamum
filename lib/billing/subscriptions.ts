@@ -1,6 +1,12 @@
 import { createServiceClient } from '@/lib/supabase/server'
 import { creditCitesOnce } from '@/lib/cites/ledger'
-import { FREE_PLAN_TIER, planFromVariantId, PRO_MONTHLY_CITES } from '@/lib/billing/plans'
+import {
+  FREE_PLAN_TIER,
+  planFromVariantId,
+  PRO_MONTHLY_CITES,
+  SEMESTER_PRO_AMOUNT_CENTS,
+  SEMESTER_PRO_DAYS,
+} from '@/lib/billing/plans'
 import {
   clearActiveProFeaturesTrial,
   consumeProTrialOpportunity,
@@ -111,10 +117,14 @@ export async function syncLemonSubscription(
     mapped?.planTier ?? (metadataPlan === 'pro' || metadataPlan === 'plus' ? metadataPlan : null)
   const billingInterval =
     mapped?.billingInterval ??
-    (metadataInterval === 'month' || metadataInterval === 'year' ? metadataInterval : null)
+    (metadataInterval === 'month' || metadataInterval === 'semester'
+      ? metadataInterval
+      : null)
 
   if (!planTier || !billingInterval) return null
   if (!attrs.customerId) return null
+  // Semester is fulfilled via one-time order, not Lemon subscription events.
+  if (billingInterval === 'semester') return null
 
   const service = await createServiceClient()
   let userId = attrs.custom?.supabase_user_id
@@ -214,6 +224,124 @@ export async function syncLemonSubscription(
   }
 }
 
+/**
+ * Activate Semester Pro from a one-time Lemon order.
+ * Grants month-1 allotment and schedules months 2–4 via next_cites_grant_at.
+ */
+export async function activateSemesterPro(input: {
+  userId: string
+  orderId: string
+  customerId?: string | null
+  checkoutId?: string | null
+}): Promise<SyncedSubscription | null> {
+  const service = await createServiceClient()
+  const billingSubscriptionId = `sem_ls_${input.orderId}`
+  const periodStart = new Date()
+  const periodEnd = new Date(periodStart)
+  periodEnd.setUTCDate(periodEnd.getUTCDate() + SEMESTER_PRO_DAYS)
+  const nextGrantAt = addCalendarMonth(periodStart.toISOString())
+  const now = periodStart.toISOString()
+  const periodEndIso = periodEnd.toISOString()
+
+  // Cap next grant so we never schedule past period end.
+  const nextGrantIso =
+    new Date(nextGrantAt).getTime() < periodEnd.getTime() ? nextGrantAt : null
+
+  const checkoutKey = input.checkoutId ?? `ls_order_${input.orderId}`
+
+  const { data: pending } = await service
+    .from('purchases')
+    .select('id, checkout_id')
+    .eq('user_id', input.userId)
+    .eq('pack', 'semester')
+    .eq('status', 'pending')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (pending?.checkout_id) {
+    const { error } = await service
+      .from('purchases')
+      .update({
+        billing_order_id: String(input.orderId),
+        cites: PRO_MONTHLY_CITES,
+        amount_cents: SEMESTER_PRO_AMOUNT_CENTS,
+        status: 'completed',
+        completed_at: now,
+      })
+      .eq('id', pending.id)
+    if (error) throw new Error(error.message)
+  } else {
+    const { error } = await service.from('purchases').upsert(
+      {
+        user_id: input.userId,
+        checkout_id: checkoutKey,
+        billing_order_id: String(input.orderId),
+        pack: 'semester',
+        cites: PRO_MONTHLY_CITES,
+        amount_cents: SEMESTER_PRO_AMOUNT_CENTS,
+        status: 'completed',
+        completed_at: now,
+      },
+      { onConflict: 'checkout_id' },
+    )
+    if (error) throw new Error(error.message)
+  }
+
+  const customerId = input.customerId ? String(input.customerId) : `sem_cust_${input.userId}`
+
+  const { error: subscriptionError } = await service.from('subscriptions').upsert(
+    {
+      user_id: input.userId,
+      billing_subscription_id: billingSubscriptionId,
+      billing_customer_id: customerId,
+      plan_tier: 'pro',
+      billing_interval: 'semester',
+      status: 'active',
+      monthly_cites: PRO_MONTHLY_CITES,
+      current_period_start: now,
+      current_period_end: periodEndIso,
+      cancel_at_period_end: true,
+      next_cites_grant_at: nextGrantIso,
+      updated_at: now,
+    },
+    { onConflict: 'user_id' },
+  )
+  if (subscriptionError) throw new Error(subscriptionError.message)
+
+  const profileUpdates: Record<string, unknown> = {
+    plan_tier: 'pro',
+    default_suggest_corrections: true,
+  }
+  if (input.customerId) {
+    profileUpdates.billing_customer_id = String(input.customerId)
+  }
+
+  const { error: profileError } = await service
+    .from('profiles')
+    .update(profileUpdates)
+    .eq('id', input.userId)
+  if (profileError) throw new Error(profileError.message)
+
+  await consumeProTrialOpportunity(input.userId)
+  await clearActiveProFeaturesTrial(input.userId)
+
+  const synced: SyncedSubscription = {
+    userId: input.userId,
+    billingSubscriptionId,
+    billingCustomerId: customerId,
+    planTier: 'pro',
+    billingInterval: 'semester',
+    status: 'active',
+    currentPeriodStart: now,
+    currentPeriodEnd: periodEndIso,
+    cancelAtPeriodEnd: true,
+  }
+
+  await grantPaidPeriodCites(synced)
+  return synced
+}
+
 export async function grantPaidPeriodCites(subscription: SyncedSubscription): Promise<boolean> {
   if (
     subscription.planTier !== 'pro' ||
@@ -235,8 +363,13 @@ export async function grantPaidPeriodCites(subscription: SyncedSubscription): Pr
   })
 
   const nextGrantAt =
-    subscription.billingInterval === 'year'
-      ? addCalendarMonth(subscription.currentPeriodStart)
+    subscription.billingInterval === 'semester'
+      ? (() => {
+          const next = addCalendarMonth(subscription.currentPeriodStart)
+          return new Date(next).getTime() < new Date(subscription.currentPeriodEnd).getTime()
+            ? next
+            : null
+        })()
       : subscription.currentPeriodEnd
 
   const service = await createServiceClient()
@@ -254,6 +387,10 @@ export function grantReference(subscriptionId: string, periodStart: string): str
   return `pro:${subscriptionId}:${unixSeconds}`
 }
 
+export function isSyntheticSemesterSubscriptionId(subscriptionId: string): boolean {
+  return subscriptionId.startsWith('sem_ls_')
+}
+
 function addCalendarMonth(iso: string): string {
   const source = new Date(iso)
   const day = source.getUTCDate()
@@ -269,20 +406,19 @@ function addCalendarMonth(iso: string): string {
 
 function addInterval(iso: string, interval: BillingInterval): string {
   const d = new Date(iso)
-  if (interval === 'year') {
-    d.setUTCFullYear(d.getUTCFullYear() + 1)
-  } else {
-    return addCalendarMonth(iso)
+  if (interval === 'semester') {
+    d.setUTCDate(d.getUTCDate() + SEMESTER_PRO_DAYS)
+    return d.toISOString()
   }
-  return d.toISOString()
+  return addCalendarMonth(iso)
 }
 
 function subtractInterval(iso: string, interval: BillingInterval): string {
   const d = new Date(iso)
-  if (interval === 'year') {
-    d.setUTCFullYear(d.getUTCFullYear() - 1)
-  } else {
-    d.setUTCMonth(d.getUTCMonth() - 1)
+  if (interval === 'semester') {
+    d.setUTCDate(d.getUTCDate() - SEMESTER_PRO_DAYS)
+    return d.toISOString()
   }
+  d.setUTCMonth(d.getUTCMonth() - 1)
   return d.toISOString()
 }

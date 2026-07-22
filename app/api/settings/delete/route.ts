@@ -20,7 +20,12 @@ export async function POST() {
     subscription &&
     !['canceled', 'incomplete_expired'].includes(subscription.status)
   ) {
-    if (!isLemonConfigured() && !subscription.billing_subscription_id.startsWith('sub_manual_') && !subscription.billing_subscription_id.startsWith('sub_dev_')) {
+    if (
+      !isLemonConfigured() &&
+      !subscription.billing_subscription_id.startsWith('sub_manual_') &&
+      !subscription.billing_subscription_id.startsWith('sub_dev_') &&
+      !subscription.billing_subscription_id.startsWith('sem_ls_')
+    ) {
       return NextResponse.json(
         { error: 'Billing is unavailable, so the active subscription could not be canceled.' },
         { status: 503 },

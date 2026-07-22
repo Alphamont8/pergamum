@@ -85,24 +85,25 @@ Lemon Squeezy is the Merchant of Record (hosted checkout, tax remittance, custom
 
 | Product | Price | Cites | Env |
 |---------|-------|-------|-----|
-| Pro Monthly (subscription) | $5.99/month | 200/month | `LEMONSQUEEZY_VARIANT_PRO_MONTHLY` |
-| Pro Annual (subscription) | $54.89/year ($4.99/mo × 12) | 200/month | `LEMONSQUEEZY_VARIANT_PRO_ANNUAL` |
-| 50 Cites (one-time) | $2.99 | 50 | `LEMONSQUEEZY_VARIANT_CITES_100` |
-| 100 Cites (one-time) | $4.99 | 100 | `LEMONSQUEEZY_VARIANT_CITES_200` |
-| 200 Cites (one-time) | $7.99 | 200 | `LEMONSQUEEZY_VARIANT_CITES_400` |
-| 500 Cites (one-time) | $16.99 | 500 | `LEMONSQUEEZY_VARIANT_CITES_1000` |
+| Pro Monthly (subscription) | $6.99/month | 200/month | `LEMONSQUEEZY_VARIANT_PRO_MONTHLY` |
+| Pro Semester (one-time) | $19.99 once | 200/month for 4 months | `LEMONSQUEEZY_VARIANT_PRO_SEMESTER` |
+| 100 Cites (one-time) | $4.99 | 100 | `LEMONSQUEEZY_VARIANT_CITES_100` |
+| 200 Cites (one-time) | $7.99 | 200 | `LEMONSQUEEZY_VARIANT_CITES_200` |
+| 500 Cites (one-time) | $16.99 | 500 | `LEMONSQUEEZY_VARIANT_CITES_500` |
 
 Also set `LEMONSQUEEZY_API_KEY`, `LEMONSQUEEZY_STORE_ID`, and `LEMONSQUEEZY_WEBHOOK_SECRET`.
 
-Rename Lemon Squeezy product titles to match Cite amounts (50 / 100 / 200 / 500). Env keys and
-variant IDs stay the same; the app grants Cites from `lib/cites/packs.ts`, not from the LS title.
+Rename Lemon Squeezy product titles to match Cite amounts (100 / 200 / 500). Env keys match
+cite counts; the app grants Cites from `lib/cites/packs.ts`.
 
-Annual is billed as a single yearly charge at the $4.99/mo effective rate. Pro grants
-200 Cites at activation and every month after that (unused monthly allotment resets; pack
-top-ups never expire). Annual subscribers receive the intervening monthly grants from the
-`grant-pro-monthly-cites` Supabase Cron job (migration `012`, amount aligned to 200 in
-migration `024`). The first Cites pack purchase unlocks a one-time 14-day Pro **features**
-trial (no 200 allotment, no auto-charge) via migration `021`.
+Monthly Pro grants 200 Cites on each paid invoice. Semester Pro is a one-time Lemon order that
+activates Pro for 120 days, grants month-1 allotment at purchase, and receives months 2–4 from
+the `grant-pro-monthly-cites` Supabase Cron (migration `026`). When the term ends,
+`expire-semester-pro` demotes the plan and clears leftover allotment. Pack Cites remain permanent
+and work with Pro features while either plan is active.
+
+The first Cites pack purchase (any size) unlocks a one-time 7-day Pro **features** trial (no 200 allotment,
+no auto-charge) via migration `021`.
 
 See [docs/PRICING.md](docs/PRICING.md) for pack sizing rationale.
 

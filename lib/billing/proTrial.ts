@@ -54,7 +54,7 @@ export async function isEligibleForProFeaturesTrial(userId: string): Promise<boo
 }
 
 /**
- * Start the 14-day Pro features trial after a completed pack purchase.
+ * Start the 7-day Pro features trial after a completed pack purchase (any pack size).
  * Does not grant the 200 monthly Cites allotment.
  * Idempotent: returns false if already used or ineligible.
  */

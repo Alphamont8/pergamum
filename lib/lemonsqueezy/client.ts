@@ -109,8 +109,12 @@ export async function cancelLemonSubscription(
   subscriptionId: string,
 ): Promise<{ ok: boolean; error?: string }> {
   if (!ensureLemonSetup()) return { ok: false, error: 'Billing is not configured.' }
-  // Manual / seed IDs are not real Lemon subscriptions.
-  if (subscriptionId.startsWith('sub_manual_') || subscriptionId.startsWith('sub_dev_')) {
+  // Manual / seed / semester IDs are not real Lemon subscriptions.
+  if (
+    subscriptionId.startsWith('sub_manual_') ||
+    subscriptionId.startsWith('sub_dev_') ||
+    subscriptionId.startsWith('sem_ls_')
+  ) {
     return { ok: true }
   }
   const { error } = await cancelSubscription(subscriptionId)

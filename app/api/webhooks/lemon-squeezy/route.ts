@@ -4,12 +4,18 @@ import { createServiceClient } from '@/lib/supabase/server'
 import { CITES_PACKS, type CitesPack } from '@/lib/cites/packs'
 import { creditCitesOnce } from '@/lib/cites/ledger'
 import {
+  activateSemesterPro,
   grantPaidPeriodCites,
   syncLemonSubscription,
   type LemonSubscriptionAttrs,
 } from '@/lib/billing/subscriptions'
 import { maybeStartProFeaturesTrial } from '@/lib/billing/proTrial'
-import { packFromVariantId, ensureLemonSetup, fetchLemonSubscription } from '@/lib/lemonsqueezy/client'
+import {
+  packFromVariantId,
+  planFromVariantId,
+  ensureLemonSetup,
+  fetchLemonSubscription,
+} from '@/lib/lemonsqueezy/client'
 
 interface LemonWebhookPayload {
   meta?: {
@@ -96,10 +102,27 @@ async function handleOrderCreated(payload: LemonWebhookPayload) {
   const orderId = payload.data?.id
   if (!orderId) return
 
+  const variantId = String(firstOrderVariantId(attrs) ?? '')
+  const plan = planFromVariantId(variantId)
+  const isSemester =
+    custom.billing_interval === 'semester' ||
+    plan?.billingInterval === 'semester' ||
+    custom.pack === 'semester'
+
+  if (isSemester) {
+    const userId = String(custom.supabase_user_id ?? '')
+    if (!userId) return
+    const customerId = attrs.customer_id != null ? String(attrs.customer_id) : null
+    await activateSemesterPro({
+      userId,
+      orderId: String(orderId),
+      customerId,
+    })
+    return
+  }
+
   // Subscription first orders also fire order_created — packs only here.
-  const pack =
-    resolvePack(custom.pack) ??
-    packFromVariantId(String(firstOrderVariantId(attrs) ?? ''))
+  const pack = resolvePack(custom.pack) ?? packFromVariantId(variantId)
   if (!pack) return
 
   const userId = String(custom.supabase_user_id ?? '')

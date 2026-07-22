@@ -14,13 +14,15 @@ import {
   PRO_MONTHLY_CITES,
   PRO_PRICING,
   formatProPrice,
-  proAnnualBillPrice,
   proHeadlineMonthlyPrice,
+  proSemesterBillPrice,
+  proSemesterEffectiveMonthlyPrice,
 } from '@/lib/billing/plans'
 import {
   PRO_FEATURES_TRIAL_DAYS,
   type ProTrialSnapshot,
 } from '@/lib/billing/proTrial.shared'
+import { CITES_PACKS, LEAD_CITES_PACK } from '@/lib/cites/packs'
 import type {
   BillingInterval,
   PlanTier,
@@ -65,6 +67,10 @@ function proRefillSentence(nextGrantDate: string, daysToRefill: number | null) {
   return `Your Pro allotment refills on ${nextGrantDate}.`
 }
 
+function billingIntervalLabel(interval: BillingInterval): string {
+  return interval === 'semester' ? 'Semester' : 'Monthly'
+}
+
 function upgradeWalletCopy(
   initial: UpgradeInitialState,
   {
@@ -92,14 +98,14 @@ function upgradeWalletCopy(
   if (showBreakdown && hasSubscription && nextGrantDate) {
     return {
       title: 'Your Cites',
-      description: `You have ${pack.toLocaleString()} Pack Cites and ${allotment.toLocaleString()} Pro allotment left this cycle. ${proRefillSentence(nextGrantDate, daysToRefill)} Pack Cites never expire.`,
+      description: `You have ${pack.toLocaleString()} Pack Cites and ${allotment.toLocaleString()} Pro allotment left this cycle. ${proRefillSentence(nextGrantDate, daysToRefill)} Pack Cites never expire and work with Pro features while Pro is active.`,
     }
   }
 
   if (showBreakdown) {
     return {
       title: 'Your Cites',
-      description: `You have ${pack.toLocaleString()} Pack Cites and ${allotment.toLocaleString()} Pro allotment available. Pack Cites never expire.`,
+      description: `You have ${pack.toLocaleString()} Pack Cites and ${allotment.toLocaleString()} Pro allotment available. Pack Cites never expire and work with Pro features while Pro is active.`,
     }
   }
 
@@ -120,22 +126,24 @@ function upgradeWalletCopy(
   if (trialEligible) {
     return {
       title: 'Your Cites',
-      description: `You have ${total.toLocaleString()} Cites. Buy a pack anytime, or subscribe for ${PRO_MONTHLY_CITES} Cites every month from $${headlinePrice}/mo billed annually. Your first top-up unlocks ${PRO_FEATURES_TRIAL_DAYS} days of Pro features.`,
+      description: `You have ${total.toLocaleString()} Cites. Top up with a pack for this paper, or go Pro for ${PRO_MONTHLY_CITES} Cites every month from $${headlinePrice}/mo. Your first top-up unlocks ${PRO_FEATURES_TRIAL_DAYS} days of Pro features.`,
     }
   }
 
   return {
     title: 'Your Cites',
-    description: `You have ${total.toLocaleString()} Cites. Buy a pack anytime, or subscribe for ${PRO_MONTHLY_CITES} every month from $${headlinePrice}/mo billed annually.`,
+    description: `You have ${total.toLocaleString()} Cites. Top up with a pack for this paper, or go Pro for ${PRO_MONTHLY_CITES} every month from $${headlinePrice}/mo.`,
   }
 }
 
 export function UpgradePageClient({ initial }: { initial: UpgradeInitialState }) {
   const router = useRouter()
   const [interval, setInterval] = useState<BillingInterval>(
-    initial.subscription?.billingInterval ?? DEFAULT_PRO_BILLING_INTERVAL,
+    initial.subscription?.billingInterval === 'month'
+      ? 'month'
+      : DEFAULT_PRO_BILLING_INTERVAL,
   )
-  const [busy, setBusy] = useState<'subscribe' | 'portal' | null>(null)
+  const [busy, setBusy] = useState<'subscribe' | 'portal' | 'pack' | null>(null)
   const [message, setMessage] = useState<string | null>(
     initial.checkoutResult === 'success'
       ? 'Payment received! Pro will switch on as soon as we finish confirming it.'
@@ -148,24 +156,38 @@ export function UpgradePageClient({ initial }: { initial: UpgradeInitialState })
   const isFeaturesTrial = initial.trial.phase === 'active'
   const trialEligible = initial.trial.phase === 'eligible'
   const showTrialConvert = initial.trial.showConvertPrompt
+  const isSemester = interval === 'semester'
   const pricing = PRO_PRICING[interval]
   const headlinePrice = proHeadlineMonthlyPrice()
-  const annualBillPrice = proAnnualBillPrice()
+  const semesterBillPrice = proSemesterBillPrice()
+  const semesterEffective = proSemesterEffectiveMonthlyPrice()
   const monthlyBillPrice = formatProPrice(PRO_PRICING.month.displayMonthlyCents)
+  const leadPack = CITES_PACKS[LEAD_CITES_PACK]
+  const leadPackPrice = formatProPrice(leadPack.amountCents)
   const periodEnd = initial.subscription?.currentPeriodEnd
     ? formatAppDate(initial.subscription.currentPeriodEnd)
     : null
   const trialEnd = formatShortDate(initial.trial.endsAt)
   const trialDays = initial.trial.daysRemaining
   const nextGrantAt =
-    initial.subscription?.nextCitesGrantAt ?? initial.subscription?.currentPeriodEnd ?? null
+    initial.subscription?.nextCitesGrantAt ??
+    (initial.subscription?.billingInterval === 'month'
+      ? initial.subscription?.currentPeriodEnd
+      : null)
   const nextGrantDate = formatShortDate(nextGrantAt)
   const daysToRefill = daysUntil(nextGrantAt)
-  const planTierLabel = isFeaturesTrial ? 'Pro Trial' : planDisplayName(initial.planTier)
+  const planTierLabel = isFeaturesTrial
+    ? 'Pro Trial'
+    : initial.subscription?.billingInterval === 'semester'
+      ? 'Semester Pro'
+      : planDisplayName(initial.planTier)
   const planStatus = (() => {
     if (isFeaturesTrial) return { label: 'Features Trial', tone: 'accent' as const }
     if (showTrialConvert) return { label: 'Trial Ended', tone: 'warn' as const }
     if (isPro) {
+      if (initial.subscription?.billingInterval === 'semester') {
+        return { label: 'Semester Active', tone: 'accent' as const }
+      }
       if (initial.subscription?.cancelAtPeriodEnd) {
         return { label: 'Cancellation Scheduled', tone: 'warn' as const }
       }
@@ -184,6 +206,8 @@ export function UpgradePageClient({ initial }: { initial: UpgradeInitialState })
     daysToRefill,
     headlinePrice,
   })
+  const isSyntheticSemester =
+    initial.subscription?.billingInterval === 'semester'
 
   useEffect(() => {
     if (initial.checkoutResult !== 'success') return
@@ -196,6 +220,26 @@ export function UpgradePageClient({ initial }: { initial: UpgradeInitialState })
     const timer = window.setTimeout(() => setMessage(null), 8000)
     return () => window.clearTimeout(timer)
   }, [message])
+
+  async function buyLeadPack() {
+    setBusy('pack')
+    setMessage(null)
+    try {
+      const response = await fetch('/api/billing/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pack: LEAD_CITES_PACK }),
+      })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok || !data.url) {
+        throw new Error(data.error ?? "We couldn't start checkout.")
+      }
+      window.location.assign(data.url)
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "We couldn't start checkout.")
+      setBusy(null)
+    }
+  }
 
   async function subscribe() {
     setBusy('subscribe')
@@ -247,8 +291,8 @@ export function UpgradePageClient({ initial }: { initial: UpgradeInitialState })
                 : showTrialConvert
                   ? `Your Pro features trial ended. Subscribe to keep every Pro feature and get ${PRO_MONTHLY_CITES} Cites every month. Nothing is charged unless you choose a plan.`
                   : isPro
-                    ? 'Manage your Pro subscription here. Your Cites, refill schedule, and pack top-ups live on the Cites page.'
-                    : `Pick the plan that matches how you write.`}
+                    ? 'Manage your Pro plan here. Your Cites, refill schedule, and pack top-ups live on the Cites page.'
+                    : 'Need Cites for this paper? Start with a pack. Go Pro when you cite every month.'}
             </p>
           </div>
         </div>
@@ -279,6 +323,40 @@ export function UpgradePageClient({ initial }: { initial: UpgradeInitialState })
         </div>
       ) : null}
 
+      {!isPro || isFeaturesTrial ? (
+        <section className="upgrade-pack-lead" aria-labelledby="upgrade-pack-lead-heading">
+          <div className="pg-title-copy">
+            <p className="upgrade-eyebrow">For This Paper</p>
+            <h2 id="upgrade-pack-lead-heading">Need Cites for This Paper?</h2>
+            <p className="pg-muted">
+              One-time packs never expire. Pack Cites work with Pro features whenever Monthly or
+              Semester Pro is active
+              {trialEligible
+                ? `, and your first top-up unlocks ${PRO_FEATURES_TRIAL_DAYS} days of Pro features`
+                : ''}
+              .
+            </p>
+          </div>
+          <div className="upgrade-pack-lead__card">
+            <div>
+              <p className="upgrade-pack-lead__name">{leadPack.label}</p>
+              <p className="pg-muted">{leadPack.blurb}</p>
+            </div>
+            <p className="upgrade-pack-lead__price">${leadPackPrice}</p>
+            <Button
+              variant="accent"
+              disabled={busy !== null}
+              onClick={() => void buyLeadPack()}
+            >
+              {busy === 'pack' ? 'Opening Checkout…' : `Buy ${leadPack.label} · $${leadPackPrice}`}
+            </Button>
+            <Link href="/cites" className="upgrade-pack-lead__more">
+              See All Packs
+            </Link>
+          </div>
+        </section>
+      ) : null}
+
       {(isFeaturesTrial || showTrialConvert) && (
         <section className="upgrade-status" aria-label="Pro features trial">
           <div className="pg-title-copy">
@@ -295,15 +373,9 @@ export function UpgradePageClient({ initial }: { initial: UpgradeInitialState })
                 : `Subscribe to keep Pro features and unlock ${PRO_MONTHLY_CITES} Cites every month. Pack Cites you already bought still never expire.`}
             </p>
           </div>
-          {!isFeaturesTrial ? (
-            <Button variant="accent" disabled={busy !== null} onClick={subscribe}>
-              {busy === 'subscribe' ? 'Opening Checkout…' : 'Subscribe to Pro'}
-            </Button>
-          ) : (
-            <Button variant="accent" disabled={busy !== null} onClick={subscribe}>
-              {busy === 'subscribe' ? 'Opening Checkout…' : 'Keep Pro · Subscribe'}
-            </Button>
-          )}
+          <Button variant="accent" disabled={busy !== null} onClick={subscribe}>
+            {busy === 'subscribe' ? 'Opening Checkout…' : 'Keep Pro · Subscribe'}
+          </Button>
         </section>
       )}
 
@@ -321,29 +393,46 @@ export function UpgradePageClient({ initial }: { initial: UpgradeInitialState })
         <section className="upgrade-status" aria-label="Subscription status">
           <div className="pg-title-copy">
             <strong>
-              {initial.subscription.cancelAtPeriodEnd
-                ? 'Pro cancellation scheduled.'
-                : initial.subscription.status === 'past_due'
-                  ? 'Payment needs attention.'
-                  : 'Pro is active.'}
+              {initial.subscription.billingInterval === 'semester'
+                ? periodEnd
+                  ? `Semester Pro is active until ${periodEnd}.`
+                  : 'Semester Pro is active.'
+                : initial.subscription.cancelAtPeriodEnd
+                  ? 'Pro cancellation scheduled.'
+                  : initial.subscription.status === 'past_due'
+                    ? 'Payment needs attention.'
+                    : 'Pro is active.'}
             </strong>
             <p className="pg-muted">
-              {initial.subscription.cancelAtPeriodEnd && periodEnd
-                ? `You'll keep every Pro feature until ${periodEnd}, no rush.`
-                : periodEnd
-                  ? `Your ${initial.subscription.billingInterval === 'year' ? 'annual' : 'monthly'} subscription renews on ${periodEnd}.`
-                  : 'Update your payment details or cancel whenever you like through the billing portal.'}
+              {initial.subscription.billingInterval === 'semester' && periodEnd
+                ? `You get ${PRO_MONTHLY_CITES} Cites each month for four months. Pack Cites still work with Pro features. No auto-renew when the term ends.`
+                : initial.subscription.cancelAtPeriodEnd && periodEnd
+                  ? `You'll keep every Pro feature until ${periodEnd}, no rush.`
+                  : periodEnd
+                    ? `Your ${billingIntervalLabel(initial.subscription.billingInterval).toLowerCase()} subscription renews on ${periodEnd}.`
+                    : 'Update your payment details or cancel whenever you like through the billing portal.'}
             </p>
           </div>
-          <Button
-            variant="ghost"
-            disabled={busy !== null || !initial.hasBillingAccount}
-            onClick={openPortal}
-          >
-            {busy === 'portal' ? 'Opening…' : 'Manage or Cancel Pro'}
-          </Button>
+          {!isSyntheticSemester ? (
+            <Button
+              variant="ghost"
+              disabled={busy !== null || !initial.hasBillingAccount}
+              onClick={openPortal}
+            >
+              {busy === 'portal' ? 'Opening…' : 'Manage or Cancel Pro'}
+            </Button>
+          ) : null}
         </section>
       ) : null}
+
+      <div className="pg-title-copy upgrade-pro-intro">
+        <p className="upgrade-eyebrow">Pro</p>
+        <h2>Write Often? Go Pro</h2>
+        <p className="pg-muted">
+          Semester for one busy term, or Monthly if you cite year-round. Pack Cites you already own
+          still work with Pro features while either plan is active.
+        </p>
+      </div>
 
       <div className="upgrade-billing-toggle" role="tablist" aria-label="Billing interval">
         {PRO_BILLING_INTERVAL_ORDER.map((value) => (
@@ -355,7 +444,7 @@ export function UpgradePageClient({ initial }: { initial: UpgradeInitialState })
             className={interval === value ? 'is-active' : ''}
             onClick={() => setInterval(value)}
           >
-            {PRO_PRICING[value].label}
+            <span className="upgrade-billing-toggle__label">{PRO_PRICING[value].label}</span>
           </button>
         ))}
       </div>
@@ -405,36 +494,46 @@ export function UpgradePageClient({ initial }: { initial: UpgradeInitialState })
           <div className="upgrade-plan-card__top">
             <div>
               <p className="upgrade-plan-card__name is-pro">Pro</p>
-              <h2>For writers who cite a lot</h2>
+              <h2>{isSemester ? 'Pro for one busy term' : 'For writers who cite a lot'}</h2>
             </div>
             <span className="upgrade-badge">
-              {isFeaturesTrial ? 'On Trial' : isPro ? 'Current' : 'Available Now'}
+              {isFeaturesTrial
+                ? 'On Trial'
+                : isPro
+                  ? 'Current'
+                  : isSemester
+                    ? 'Best for Term'
+                    : 'Flexible'}
             </span>
           </div>
           <p className="upgrade-price">
-            ${formatProPrice(pricing.displayMonthlyCents)} <span>/ month</span>
-          </p>
-          <p className="pg-muted">
-            {interval === 'year' ? (
+            {isSemester ? (
               <>
-                ${annualBillPrice}/year billed annually (${headlinePrice}/mo).
+                ${semesterBillPrice} <span>once</span>
               </>
             ) : (
               <>
-                Billed monthly at ${formatProPrice(PRO_PRICING.month.displayMonthlyCents)}/mo, or{' '}
-                <button
-                  type="button"
-                  className="upgrade-price-nudge"
-                  onClick={() => setInterval('year')}
-                >
-                  ${headlinePrice}/mo billed annually
-                </button>
-                .
+                ${formatProPrice(pricing.displayMonthlyCents)} <span>/ month</span>
+              </>
+            )}
+          </p>
+          <p className="pg-muted">
+            {isSemester ? (
+              <>
+                ${semesterEffective}/mo effective. No auto-renew.
+              </>
+            ) : (
+              <>
+                Billed monthly at ${monthlyBillPrice}/mo. Auto-renews.
               </>
             )}
           </p>
           <ul className="upgrade-feature-list">
-            <li>{PRO_MONTHLY_CITES} monthly Cites allotment</li>
+            <li>
+              {isSemester
+                ? `${PRO_MONTHLY_CITES} Cites each month for 4 months`
+                : `${PRO_MONTHLY_CITES} monthly Cites allotment`}
+            </li>
             <li>Deeper verification and faster generation</li>
             <li>All 15 referencing styles</li>
             <li>No word cap, fully customizable</li>
@@ -442,14 +541,20 @@ export function UpgradePageClient({ initial }: { initial: UpgradeInitialState })
             <li>All databases and agentic web search</li>
           </ul>
           {isPro && !isFeaturesTrial ? (
-            <Button
-              variant="ghost"
-              className="upgrade-plan-action"
-              disabled={busy !== null || !initial.hasBillingAccount}
-              onClick={openPortal}
-            >
-              {busy === 'portal' ? 'Opening…' : 'Manage or Cancel Pro'}
-            </Button>
+            isSyntheticSemester ? (
+              <Button variant="ghost" className="upgrade-plan-action" disabled>
+                Active Until {periodEnd ?? 'Term End'}
+              </Button>
+            ) : (
+              <Button
+                variant="ghost"
+                className="upgrade-plan-action"
+                disabled={busy !== null || !initial.hasBillingAccount}
+                onClick={openPortal}
+              >
+                {busy === 'portal' ? 'Opening…' : 'Manage or Cancel Pro'}
+              </Button>
+            )
           ) : (
             <Button
               variant="accent"
@@ -460,11 +565,11 @@ export function UpgradePageClient({ initial }: { initial: UpgradeInitialState })
               {busy === 'subscribe'
                 ? 'Opening Checkout…'
                 : isFeaturesTrial || showTrialConvert
-                  ? interval === 'year'
-                    ? `Keep Pro · $${annualBillPrice}/yr`
+                  ? isSemester
+                    ? `Keep Pro · $${semesterBillPrice}`
                     : `Keep Pro · $${monthlyBillPrice}/mo`
-                  : interval === 'year'
-                    ? `Subscribe Annually · $${annualBillPrice}/yr`
+                  : isSemester
+                    ? `Get Semester Pro · $${semesterBillPrice}`
                     : `Subscribe Monthly · $${monthlyBillPrice}/mo`}
             </Button>
           )}
@@ -502,13 +607,27 @@ export function UpgradePageClient({ initial }: { initial: UpgradeInitialState })
                         {row.label}
                       </span>
                       <span className="compare-group__value" role="cell">
-                        {row.basic}
+                        <span className="compare-group__value-main">{row.basic}</span>
+                        {row.basicTag ? (
+                          <span className="compare-promo-tag">{row.basicTag}</span>
+                        ) : null}
+                        {row.basicNote ? (
+                          <span className="compare-group__note">{row.basicNote}</span>
+                        ) : null}
                       </span>
                       <span
                         className={`compare-group__value ${row.shared ? 'is-shared' : 'is-pro'}`.trim()}
                         role="cell"
                       >
-                        {row.pro}
+                        <span className="compare-group__value-main">{row.pro}</span>
+                        {row.proTag ? (
+                          <span className="compare-promo-tag compare-promo-tag--accent">
+                            {row.proTag}
+                          </span>
+                        ) : null}
+                        {row.proNote ? (
+                          <span className="compare-group__note">{row.proNote}</span>
+                        ) : null}
                       </span>
                     </div>
                   ))}

@@ -8,12 +8,18 @@ import { Button } from '@/components/ui/Button'
 import { useLibrary } from '@/components/shell/LibraryContext'
 import { createClient } from '@/lib/supabase/client'
 import { generationIdFromLedgerReference } from '@/lib/cites/ledgerReference'
-import { PRO_MONTHLY_CITES, proHeadlineMonthlyPrice } from '@/lib/billing/plans'
+import {
+  PRO_MONTHLY_CITES,
+  proHeadlineMonthlyPrice,
+  proSemesterBillPrice,
+  proSemesterEffectiveMonthlyPrice,
+  semesterSavingsLabel,
+} from '@/lib/billing/plans'
 import {
   PRO_FEATURES_TRIAL_DAYS,
   type ProTrialSnapshot,
 } from '@/lib/billing/proTrial.shared'
-import { CITES_PACKS, type CitesPack } from '@/lib/cites/packs'
+import { CITES_PACKS, LEAD_CITES_PACK, type CitesPack } from '@/lib/cites/packs'
 import type { BillingInterval, PlanTier, SubscriptionStatus } from '@/types'
 import { formatAppDate, formatAppDateTime } from '@/lib/format/date'
 import './cites.css'
@@ -219,6 +225,9 @@ export function CitesPageClient({
   const isFeaturesTrial = trialState.phase === 'active'
   const trialEligible = trialState.phase === 'eligible'
   const proHeadline = proHeadlineMonthlyPrice()
+  const proSemester = proSemesterBillPrice()
+  const proSemesterMonthly = proSemesterEffectiveMonthlyPrice()
+  const semesterSavings = semesterSavingsLabel()
   const hasSubscriptionRow = Boolean(subscription)
   const nextGrantAt = subscription?.nextCitesGrantAt ?? subscription?.currentPeriodEnd ?? null
   const nextGrantDate = formatShortDate(nextGrantAt)
@@ -519,9 +528,9 @@ export function CitesPageClient({
                     ? `Every Pro feature until ${trialEndDate}, pack Cites work with Pro features, and the ${PRO_MONTHLY_CITES} monthly allotment starts after you subscribe.`
                     : `Every Pro feature for ${PRO_FEATURES_TRIAL_DAYS} days, pack Cites work with Pro features, and you can subscribe anytime with nothing charged when the trial ends.`
                   : hasSubscriptionRow
-                    ? subscription?.billingInterval === 'year'
-                      ? 'Annual billing with a monthly Pro allotment that refreshes each month.'
-                      : 'Monthly billing with a Pro allotment that refreshes each cycle.'
+                    ? subscription?.billingInterval === 'semester'
+                      ? 'Semester Pro with a monthly allotment for four months. Pack Cites still work with Pro features.'
+                      : 'Monthly billing with a Pro allotment that refreshes each cycle. Pack Cites still work with Pro features.'
                     : 'Pro access is on, but there is no automatic monthly allotment on this account.'}
               </p>
             </div>
@@ -549,7 +558,9 @@ export function CitesPageClient({
             ) : hasSubscriptionRow ? (
               <div>
                 <dt>Billing</dt>
-                <dd>{subscription?.billingInterval === 'year' ? 'Annual' : 'Monthly'}</dd>
+                <dd>
+                  {subscription?.billingInterval === 'semester' ? 'Semester' : 'Monthly'}
+                </dd>
               </div>
             ) : null}
             {!isFeaturesTrial && hasSubscriptionRow ? (
@@ -558,13 +569,17 @@ export function CitesPageClient({
                 <dd>
                   {subscription?.status === 'past_due'
                     ? 'May pause until billing is updated'
-                    : subscription?.cancelAtPeriodEnd && periodEndDate
+                    : subscription?.cancelAtPeriodEnd &&
+                        periodEndDate &&
+                        subscription.billingInterval !== 'semester'
                       ? `Stops after ${periodEndDate}`
                       : nextGrantDate
                         ? daysToRefill != null && daysToRefill >= 0
                           ? `In ${daysToRefill} day${daysToRefill === 1 ? '' : 's'} · ${nextGrantDate}`
                           : nextGrantDate
-                        : 'Scheduled with your subscription'}
+                        : subscription?.billingInterval === 'semester' && periodEndDate
+                          ? `Ends ${periodEndDate}`
+                          : 'Scheduled with your subscription'}
                 </dd>
               </div>
             ) : null}
@@ -607,33 +622,54 @@ export function CitesPageClient({
                 {PRO_FEATURES_TRIAL_DAYS} days of Pro features without the {PRO_MONTHLY_CITES}{' '}
                 monthly allotment.
                 <br />
-                Or subscribe for {PRO_MONTHLY_CITES} Cites every month from ${proHeadline}/mo billed
-                annually.
+                Or start with Semester Pro (${proSemester}, {semesterSavings.toLowerCase()}) or Monthly
+                from ${proHeadline}/mo.
               </p>
             ) : (
               <p className="pg-muted">
-                Packs are one-time and never expire. Pro adds {PRO_MONTHLY_CITES} Cites allowance every
-                month, plus deeper verification, faster generation, every referencing style, exports,
-                and specialty databases.
+                Packs are one-time and never expire. Pro adds {PRO_MONTHLY_CITES} Cites every month,
+                plus deeper verification, faster generation, every referencing style, exports, and
+                specialty databases. Pack Cites work with Pro features while Pro is active.
               </p>
             )}
           </div>
           <div className="cites-pro-compare">
-            <div className="cites-pro-compare__option">
-              <span className="cites-pro-compare__label">Pack</span>
-              <strong>50 Cites · $2.99 once</strong>
+            <div className="cites-pro-compare__option is-pro">
+              <span className="cites-pro-compare__label">
+                Semester Pro
+                <span className="compare-promo-tag compare-promo-tag--accent">{semesterSavings}</span>
+              </span>
+              <strong>
+                {PRO_MONTHLY_CITES} Cites/mo · ${proSemester} for 4 months
+              </strong>
               <span className="pg-subtle">
-                {trialEligible
-                  ? `Includes ${PRO_FEATURES_TRIAL_DAYS}-day Pro features trial`
-                  : 'Buy below when you need a boost'}
+                Best for a busy term · ~${proSemesterMonthly}/mo effective
               </span>
             </div>
-            <div className="cites-pro-compare__option is-pro">
-              <span className="cites-pro-compare__label">Pro · Best value</span>
+            <div className="cites-pro-compare__option">
+              <span className="cites-pro-compare__label">
+                Monthly Pro
+                <span className="compare-promo-tag">Flexible</span>
+              </span>
+              <strong>{PRO_MONTHLY_CITES} Cites · ${proHeadline}/mo</strong>
+              <span className="pg-subtle">Cancel anytime · every Pro feature</span>
+            </div>
+            <div className="cites-pro-compare__option">
+              <span className="cites-pro-compare__label">
+                Pack
+                {trialEligible ? (
+                  <span className="compare-promo-tag">7-Day Pro Trial on First Pack</span>
+                ) : null}
+              </span>
               <strong>
-                {PRO_MONTHLY_CITES} Cites · ${proHeadline}/mo billed annually
+                {CITES_PACKS[LEAD_CITES_PACK].label} · $
+                {(CITES_PACKS[LEAD_CITES_PACK].amountCents / 100).toFixed(2)} once
               </strong>
-              <span className="pg-subtle">Monthly allotment · every Pro feature</span>
+              <span className="pg-subtle">
+                {trialEligible
+                  ? 'Any first pack size unlocks Pro features for a week'
+                  : 'Buy below when you need a boost'}
+              </span>
             </div>
           </div>
           <Link href="/upgrade" className="pg-btn pg-btn--accent pg-btn--md cites-pro-upgrade__cta">
@@ -647,8 +683,9 @@ export function CitesPageClient({
           <h2>{isPro && !isFeaturesTrial ? 'Need More Before Refill?' : 'Top Up'}</h2>
           {trialEligible ? (
             <p className="pg-muted">
-              First top-up unlocks {PRO_FEATURES_TRIAL_DAYS} days of Pro features. Pack Cites never
-              expire and work with Pro while your trial (or subscription) is active.
+              First top-up unlocks {PRO_FEATURES_TRIAL_DAYS} days of Pro features on any pack (100,
+              200, or 500). Pack Cites never expire and work with Pro while your trial or
+              subscription is active.
             </p>
           ) : isPro ? (
             <p className="pg-muted">
@@ -672,7 +709,7 @@ export function CitesPageClient({
                   <strong>{meta.label}</strong>
                   <span className="pg-subtle">
                     {trialEligible
-                      ? `${meta.blurb} · ${PRO_FEATURES_TRIAL_DAYS}-day Pro trial`
+                      ? `${meta.blurb} · ${PRO_FEATURES_TRIAL_DAYS}-day Pro trial on first pack`
                       : meta.blurb}
                   </span>
                 </span>

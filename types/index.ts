@@ -2,7 +2,7 @@ export type ThemePreference = 'system' | 'light' | 'dark'
 
 export type PlanTier = 'basic' | 'plus' | 'pro'
 
-export type BillingInterval = 'month' | 'year'
+export type BillingInterval = 'month' | 'semester'
 
 export type SubscriptionStatus =
   | 'incomplete'
