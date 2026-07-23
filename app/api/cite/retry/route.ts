@@ -18,6 +18,7 @@ import {
 } from '@/lib/billing/entitlements'
 import type { GenerationSettings, SourceRecord } from '@/types'
 
+export const maxDuration = 300
 export const runtime = 'nodejs'
 
 const bodySchema = z.object({
