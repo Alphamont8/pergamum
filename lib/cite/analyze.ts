@@ -363,84 +363,84 @@ Essay:
 ${essay}
 """`
 
-  const compact = await completeStructured(
-    compactSentenceListSchema,
-    [{ role: 'user', content: userContent }],
-    {
-      system: `You identify essay sentences that need citations. Return JSON only:
+  try {
+    const compact = await completeStructured(
+      compactSentenceListSchema,
+      [{ role: 'user', content: userContent }],
+      {
+        system: `You identify essay sentences that need citations. Return a JSON object only:
 { "sentences": [ { "index": 0, "text": "<exact sentence copied from the essay>" } ] }
 
 Rules:
 - Copy each sentence exactly from the essay (same wording and punctuation).
-- Include every evidence-backed factual claim; skip opinions, plans, and thesis framing.
+- Include every evidence-backed factual claim, statistic, percentage, dollar amount, or named data source (e.g. Statista); skip opinions, plans, and thesis framing.
 - Do not paraphrase. Do not add fields beyond index and text.`,
-      temperature: 0.1,
-      maxTokens: 4096,
-      timeoutMs,
-      structuredMode: 'fast',
-    },
-  )
-
-  return materializeAnalyzedSentences(essay, compact.sentences, settings)
+        temperature: 0.1,
+        maxTokens: 6144,
+        timeoutMs,
+        // Full mode: text → salvage generateObject → retry. Never fail on one bad reply.
+        structuredMode: 'full',
+      },
+    )
+    return materializeAnalyzedSentences(essay, compact.sentences, settings)
+  } catch (err) {
+    console.warn(
+      '[analyze] compact sentence list failed:',
+      err instanceof Error ? err.message : err,
+    )
+    return []
+  }
 }
 
-/** Pro long drafts: parallel chunks keep each LLM call within time/output limits. */
-const ANALYZE_CHUNK_WORDS = 950
-/** Pro drafts above this word count use chunked analysis (Basic max is 1,000). */
-const ANALYZE_CHUNK_WORD_THRESHOLD = 900
-const ANALYZE_CHUNK_CONCURRENCY = 4
-/** Leave headroom inside the analyze route maxDuration budget. */
+/**
+ * Reliability-first analyze strategy:
+ * - Drafts up to ~2,400 words: one LLM pass (lean for longer, full for short).
+ * - Longer Pro drafts: paragraph chunks in parallel; a failed chunk never kills the run.
+ * - Always fall back to a compact sentence list before failing the user.
+ */
+const ANALYZE_CHUNK_WORDS = 1100
+/** Only chunk when a single pass is likely to truncate (Pro drafts). */
+const ANALYZE_CHUNK_WORD_THRESHOLD = 2400
+const ANALYZE_CHUNK_CONCURRENCY = 3
 const ANALYZE_ROUTE_BUDGET_MS = 270_000
 
-/** Prefer lean schema when a single request would emit oversized JSON. */
-const LEAN_ANALYZE_CHAR_THRESHOLD = 2000
-const FULL_ANALYZE_TIMEOUT_MS = 55_000
-const LEAN_ANALYZE_TIMEOUT_MS = 80_000
-const COMPACT_ANALYZE_TIMEOUT_MS = 30_000
+/** Prefer lean schema once the draft is large enough that full claim JSON often truncates. */
+const LEAN_ANALYZE_WORD_THRESHOLD = 700
+const FULL_ANALYZE_TIMEOUT_MS = 90_000
+const LEAN_ANALYZE_TIMEOUT_MS = 110_000
+const COMPACT_ANALYZE_TIMEOUT_MS = 60_000
 
 type AnalyzeLlmResult = z.infer<typeof analyzeSchema>
 
-function splitLongTextByWords(text: string, maxWords: number): string[] {
-  const words = text.trim().split(/\s+/).filter(Boolean)
-  if (words.length <= maxWords) return [text.trim()]
-  const parts: string[] = []
-  for (let i = 0; i < words.length; i += maxWords) {
-    parts.push(words.slice(i, i + maxWords).join(' '))
-  }
-  return parts
-}
-
 function splitEssayIntoWordChunks(essay: string, maxWords: number): string[] {
   const paragraphs = essay.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean)
-  const units =
-    paragraphs.length > 0
-      ? paragraphs.flatMap((paragraph) => splitLongTextByWords(paragraph, maxWords))
-      : splitLongTextByWords(essay, maxWords)
+  if (paragraphs.length === 0) return [essay.trim()].filter(Boolean)
 
   const chunks: string[] = []
   let current: string[] = []
   let currentWords = 0
 
-  for (const unit of units) {
-    const unitWords = countWords(unit)
-    if (currentWords > 0 && currentWords + unitWords > maxWords) {
+  for (const paragraph of paragraphs) {
+    const paragraphWords = countWords(paragraph)
+    // Keep whole paragraphs together so sentence recovery can still locate spans.
+    if (currentWords > 0 && currentWords + paragraphWords > maxWords) {
       chunks.push(current.join('\n\n'))
-      current = [unit]
-      currentWords = unitWords
+      current = [paragraph]
+      currentWords = paragraphWords
     } else {
-      current.push(unit)
-      currentWords += unitWords
+      current.push(paragraph)
+      currentWords += paragraphWords
     }
   }
 
   if (current.length) chunks.push(current.join('\n\n'))
-  return chunks.length ? chunks : splitLongTextByWords(essay, maxWords)
+  return chunks.length ? chunks : [essay.trim()]
 }
 
 async function mapWithConcurrency<T, R>(
   items: T[],
   concurrency: number,
-  fn: (item: T) => Promise<R>,
+  fn: (item: T, index: number) => Promise<R>,
 ): Promise<R[]> {
   const results = new Array<R>(items.length)
   let nextIndex = 0
@@ -449,7 +449,7 @@ async function mapWithConcurrency<T, R>(
     while (nextIndex < items.length) {
       const index = nextIndex
       nextIndex += 1
-      results[index] = await fn(items[index])
+      results[index] = await fn(items[index], index)
     }
   }
 
@@ -463,6 +463,8 @@ function buildAnalyzeUserContent(essay: string, settings: GenerationSettings): s
   return `Settings:
 - Prefer academic sources: ${settings.sourceTier === 'academic' ? 'yes, academic only' : 'academic preferred but news/web ok'}
 - Recency preference: ${settings.recency}
+
+Return one JSON object only. Include every sentence with numbers, percentages, dollar amounts, Statista/survey/market data, or other checkable facts.
 
 Essay:
 """
@@ -492,11 +494,11 @@ async function runAnalyzeLlm(
   essay: string,
   settings: GenerationSettings,
   timeoutBudgetMs?: number,
-  options?: { chunked?: boolean },
 ): Promise<AnalyzeLlmResult> {
   const userContent = buildAnalyzeUserContent(essay, settings)
-  const preferLean = !options?.chunked && essay.length >= LEAN_ANALYZE_CHAR_THRESHOLD
-  const budget = Math.max(20_000, timeoutBudgetMs ?? ANALYZE_ROUTE_BUDGET_MS)
+  const words = countWords(essay)
+  const preferLean = words >= LEAN_ANALYZE_WORD_THRESHOLD
+  const budget = Math.max(25_000, timeoutBudgetMs ?? ANALYZE_ROUTE_BUDGET_MS)
   const fullTimeout = Math.min(FULL_ANALYZE_TIMEOUT_MS, budget)
   const leanTimeout = Math.min(LEAN_ANALYZE_TIMEOUT_MS, budget)
   let result: AnalyzeLlmResult | null = null
@@ -511,7 +513,7 @@ async function runAnalyzeLlm(
           temperature: 0.2,
           maxTokens: 8192,
           timeoutMs: fullTimeout,
-          structuredMode: 'fast',
+          structuredMode: 'full',
         },
       )
     } catch (fullErr) {
@@ -520,29 +522,41 @@ async function runAnalyzeLlm(
         fullErr instanceof Error ? fullErr.message : fullErr,
       )
     }
-  } else {
-    console.info('[analyze] long draft — using lean schema first')
   }
 
   if (!result) {
-    const lean = await completeStructured(
-      leanAnalyzeSchema,
-      [{ role: 'user', content: userContent }],
-      {
-        system: `${ANALYZE_ESSAY_SYSTEM}
+    try {
+      const lean = await completeStructured(
+        leanAnalyzeSchema,
+        [{ role: 'user', content: userContent }],
+        {
+          system: `${ANALYZE_ESSAY_SYSTEM}
 
-If output length is a concern, prefer a compact JSON shape: medical, legal, reasoning, and sentences with index, text, claimType, claim, reason only.`,
-        temperature: 0.15,
-        maxTokens: 4096,
-        timeoutMs: leanTimeout,
-        structuredMode: 'fast',
-      },
-    )
-    return {
-      medical: lean.medical,
-      legal: lean.legal,
-      reasoning: lean.reasoning,
-      sentences: lean.sentences,
+If output length is a concern, prefer a compact JSON shape: medical, legal, reasoning, and sentences with index, text, claimType, claim, reason only. Still include EVERY fact/stat sentence.`,
+          temperature: 0.15,
+          maxTokens: 6144,
+          timeoutMs: leanTimeout,
+          structuredMode: 'full',
+        },
+      )
+      result = {
+        medical: lean.medical,
+        legal: lean.legal,
+        reasoning: lean.reasoning,
+        sentences: lean.sentences,
+      }
+    } catch (leanErr) {
+      console.warn(
+        '[analyze] lean schema failed:',
+        leanErr instanceof Error ? leanErr.message : leanErr,
+      )
+      // Soft empty — finalize will compact-retry instead of hard-failing the route.
+      result = {
+        medical: false,
+        legal: false,
+        reasoning: 'Analysis needed a compact retry after an incomplete model reply.',
+        sentences: [],
+      }
     }
   }
 
@@ -559,20 +573,16 @@ async function finalizeEssayAnalysis(
   let sentences = materializeAnalyzedSentences(essay, result.sentences, settings)
 
   const compactBudget = Math.max(
-    10_000,
+    15_000,
     Math.min(COMPACT_ANALYZE_TIMEOUT_MS, timeoutBudgetMs ?? COMPACT_ANALYZE_TIMEOUT_MS),
   )
   const minExpected = estimateMinimumCitableSentences(essay)
   const underRecalled =
-    sentences.length < Math.max(3, Math.floor(minExpected * 0.45)) &&
-    (reasoningImpliesCitations(result.reasoning ?? '') || minExpected >= 6)
+    sentences.length < Math.max(3, Math.floor(minExpected * 0.45)) && minExpected >= 4
 
-  if (sentences.length === 0 && reasoningImpliesCitations(result.reasoning ?? '')) {
-    console.warn('[analyze] reasoning implies citations but sentence list was empty; retrying compact list')
-    sentences = await retryCompactSentenceAnalyze(essay, settings, compactBudget)
-  } else if (underRecalled) {
+  if (sentences.length === 0 || underRecalled) {
     console.warn(
-      `[analyze] low recall (${sentences.length}/${minExpected} expected); retrying compact list`,
+      `[analyze] low recall (${sentences.length}/${minExpected} expected); compact retry`,
     )
     const compact = await retryCompactSentenceAnalyze(essay, settings, compactBudget)
     if (compact.length > sentences.length) {
@@ -582,7 +592,7 @@ async function finalizeEssayAnalysis(
 
   if (sentences.length === 0 && reasoningImpliesCitations(result.reasoning ?? '')) {
     throw new Error(
-      "We found claims in your draft but couldn't match them to sentences. Try again or shorten your draft.",
+      "We found claims in your draft but couldn't match them to sentences. Try again in a moment.",
     )
   }
 
@@ -613,12 +623,26 @@ async function analyzeEssayChunked(
   const perChunkBudget = () =>
     Math.min(
       LEAN_ANALYZE_TIMEOUT_MS,
-      Math.max(35_000, Math.floor(remainingBudget() / waves)),
+      Math.max(40_000, Math.floor(remainingBudget() / waves)),
     )
 
-  const chunkResults = await mapWithConcurrency(chunks, ANALYZE_CHUNK_CONCURRENCY, (chunk) =>
-    runAnalyzeLlm(chunk, settings, perChunkBudget(), { chunked: true }),
-  )
+  // Isolate failures: one bad chunk must not abort the whole analysis.
+  const chunkResults = await mapWithConcurrency(chunks, ANALYZE_CHUNK_CONCURRENCY, async (chunk) => {
+    try {
+      return await runAnalyzeLlm(chunk, settings, perChunkBudget())
+    } catch (err) {
+      console.warn(
+        '[analyze] chunk failed, using empty placeholder:',
+        err instanceof Error ? err.message : err,
+      )
+      return {
+        medical: false,
+        legal: false,
+        reasoning: '',
+        sentences: [],
+      } satisfies AnalyzeLlmResult
+    }
+  })
 
   const seen = new Set<string>()
   const mergedSentences: Array<z.infer<typeof sentenceAnalyzeSchema>> = []
@@ -645,7 +669,7 @@ async function analyzeEssayChunked(
 }
 
 export interface AnalyzeEssayOptions {
-  /** When true, long Pro drafts are analyzed in paragraph chunks (parallel). */
+  /** When true, very long Pro drafts are analyzed in paragraph chunks (parallel). */
   allowChunked?: boolean
 }
 
@@ -658,12 +682,35 @@ export async function analyzeEssayForCitations(
   const deadlineAt = Date.now() + ANALYZE_ROUTE_BUDGET_MS
   const remainingBudget = () => Math.max(20_000, deadlineAt - Date.now())
 
-  if (options.allowChunked && words > ANALYZE_CHUNK_WORD_THRESHOLD) {
-    return analyzeEssayChunked(essay, settings)
-  }
+  try {
+    if (options.allowChunked && words > ANALYZE_CHUNK_WORD_THRESHOLD) {
+      return await analyzeEssayChunked(essay, settings)
+    }
 
-  const result = await runAnalyzeLlm(essay, settings, remainingBudget())
-  return finalizeEssayAnalysis(essay, settings, result, remainingBudget())
+    const result = await runAnalyzeLlm(essay, settings, remainingBudget())
+    return await finalizeEssayAnalysis(essay, settings, result, remainingBudget())
+  } catch (err) {
+    // Last-resort compact pass over the whole essay before failing the route.
+    console.warn(
+      '[analyze] primary path failed, last-resort compact:',
+      err instanceof Error ? err.message : err,
+    )
+    const compact = await retryCompactSentenceAnalyze(
+      essay,
+      settings,
+      Math.min(COMPACT_ANALYZE_TIMEOUT_MS, remainingBudget()),
+    )
+    if (compact.length > 0) {
+      const inferred = inferSubjectFlags(essay)
+      return {
+        sentences: compact,
+        medical: inferred.medical,
+        legal: inferred.legal,
+        reasoning: 'Recovered claim sentences after an incomplete first pass.',
+      }
+    }
+    throw new Error("We couldn't finish analysis. Try again in a moment.")
+  }
 }
 
 export async function extractClaimQuery(sentence: string): Promise<ClaimQuery> {

@@ -296,16 +296,21 @@ export async function POST(request: Request) {
       noCitationsNeeded: citesRequired === 0,
     })
   } catch (err) {
+    const raw = err instanceof Error ? err.message : "We couldn't analyze your essay."
+    // Never surface internal LLM/parse jargon to the client.
+    const message =
+      /json object|empty response|could not parse|missing a required field|schema|timed? ?out|abort/i.test(
+        raw,
+      )
+        ? "We couldn't finish analysis. Try again in a moment."
+        : raw
     await service
       .from('generations')
       .update({
         status: 'failed',
-        error_message: err instanceof Error ? err.message : "We couldn't analyze your essay.",
+        error_message: message,
       })
       .eq('id', generation.id)
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "We couldn't analyze your essay." },
-      { status: 500 },
-    )
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }

@@ -209,10 +209,45 @@ export function repairTruncatedJson(text: string): string | null {
 
 /** Pull the first JSON object from a model reply (handles fenced / truncated blocks). */
 export function extractJsonObject(text: string): string | null {
-  const located = findJsonStart(text)
-  if (!located) return null
+  const trimmed = text.trim()
+  if (!trimmed) return null
+
+  // Strip common model prefixes before the JSON payload.
+  const withoutPrefix = trimmed
+    .replace(/^(?:here(?:'s| is) (?:the )?json[:\s]*)/i, '')
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/i, '')
+    .trim()
+
+  const located = findJsonStart(withoutPrefix) ?? findJsonStart(trimmed)
+  if (!located) {
+    const arrayStart = withoutPrefix.indexOf('[')
+    if (arrayStart >= 0) {
+      const arrayJson = extractBalancedJson(withoutPrefix, arrayStart, '[', ']')
+      if (arrayJson) {
+        try {
+          const parsed = JSON.parse(arrayJson)
+          if (Array.isArray(parsed)) {
+            return JSON.stringify({ sentences: parsed })
+          }
+        } catch {
+          /* fall through */
+        }
+      }
+    }
+    return null
+  }
 
   const { source, start } = located
+  return extractBalancedJson(source, start, '{', '}') ?? repairTruncatedJson(withoutPrefix) ?? repairTruncatedJson(trimmed)
+}
+
+function extractBalancedJson(
+  source: string,
+  start: number,
+  open: '[' | '{',
+  close: ']' | '}',
+): string | null {
   let depth = 0
   let inString = false
   let escaped = false
@@ -234,14 +269,29 @@ export function extractJsonObject(text: string): string | null {
       inString = true
       continue
     }
-    if (ch === '{') depth += 1
-    if (ch === '}') {
+    if (ch === open) depth += 1
+    if (ch === close) {
       depth -= 1
       if (depth === 0) return source.slice(start, i + 1)
     }
   }
+  return null
+}
 
-  return repairTruncatedJson(text)
+function humanizeStructuredParseError(message: string): string {
+  if (/did not return a json object/i.test(message)) {
+    return "We couldn't read the analysis from the model. Try again."
+  }
+  if (/empty response/i.test(message)) {
+    return 'The model returned an empty response. Try again.'
+  }
+  if (/could not parse/i.test(message)) {
+    return "We couldn't read the analysis from the model. Try again."
+  }
+  if (/missing a required field/i.test(message)) {
+    return "We couldn't read a complete analysis from the model. Try again."
+  }
+  return message
 }
 
 function parseStructuredJson<T extends z.ZodType>(
@@ -254,6 +304,7 @@ function parseStructuredJson<T extends z.ZodType>(
   }
   const json = extractJsonObject(trimmed)
   if (!json) {
+    console.warn('[llm] no JSON object in model reply:', trimmed.slice(0, 240).replace(/\s+/g, ' '))
     throw new Error('The model did not return a JSON object.')
   }
   let parsed: unknown
@@ -268,6 +319,37 @@ function parseStructuredJson<T extends z.ZodType>(
     throw new Error(`The model JSON was missing a required field (${detail}).`)
   }
   return result.data
+}
+
+async function generateObjectSalvage<T extends z.ZodType>(
+  schema: T,
+  messages: LLMMessage[],
+  options: CompletionOptions,
+  system: string,
+  temperature: number,
+  maxTokens: number,
+  remainingTimeoutMs: () => number | undefined,
+): Promise<z.infer<T> | null> {
+  const budget = remainingTimeoutMs()
+  if (budget != null && budget < 12_000) return null
+  try {
+    const { object } = await generateObject({
+      model: getModel(),
+      schema,
+      system,
+      messages: toSdkMessages(messages),
+      temperature,
+      maxTokens,
+      abortSignal: resolveAbortSignal({
+        abortSignal: options.abortSignal,
+        timeoutMs: remainingTimeoutMs(),
+      }),
+      providerOptions: GATEWAY_PROVIDER_OPTIONS,
+    })
+    return object
+  } catch {
+    return null
+  }
 }
 
 export async function complete(
@@ -337,13 +419,52 @@ export async function completeStructured<T extends z.ZodType>(
     return parseStructuredJson(schema, text)
   } catch (err) {
     errors.push(err instanceof Error ? err.message : 'text parse failed')
-    if (isAbortError(err) || structuredMode === 'fast') {
+    if (isAbortError(err)) {
       console.warn('[llm] structured output failed:', errors.join(' | '))
-      throw isAbortError(err)
-        ? new Error('That took too long. Try again or shorten your draft.')
-        : err instanceof Error
-          ? err
-          : new Error("We couldn't read a valid analysis response from the model. Try again or shorten your draft.")
+      throw new Error('That took too long. Try again or shorten your draft.')
+    }
+    // Always try gateway structured mode once before giving up — 'fast' used to
+    // hard-fail on the first bad prose reply and break Analyze.
+    const salvaged = await generateObjectSalvage(
+      schema,
+      messages,
+      options,
+      system,
+      temperature,
+      maxTokens,
+      remainingTimeoutMs,
+    )
+    if (salvaged != null) return salvaged
+
+    if (structuredMode === 'fast') {
+      // One nudged text retry before failing fast paths.
+      try {
+        const nudged = await completeNonEmpty(
+          [
+            ...messages,
+            {
+              role: 'user',
+              content:
+                'Your previous reply was not valid JSON. Reply again with one JSON object only matching the required schema. No markdown, no commentary.',
+            },
+          ],
+          {
+            ...attemptOptions(),
+            temperature: Math.max(0.05, temperature - 0.1),
+          },
+        )
+        return parseStructuredJson(schema, nudged)
+      } catch (retryErr) {
+        errors.push(retryErr instanceof Error ? retryErr.message : 'nudged retry failed')
+        console.warn('[llm] structured output failed:', errors.join(' | '))
+        throw new Error(
+          humanizeStructuredParseError(
+            err instanceof Error
+              ? err.message
+              : "We couldn't read a valid analysis response from the model. Try again.",
+          ),
+        )
+      }
     }
   }
 
@@ -394,9 +515,7 @@ export async function completeStructured<T extends z.ZodType>(
   }
 
   console.warn('[llm] structured output failed:', errors.join(' | '))
-  throw new Error(
-    "We couldn't read a valid analysis response from the model. Try again or shorten your draft.",
-  )
+  throw new Error("We couldn't read a valid analysis response from the model. Try again or shorten your draft.")
 }
 
 export async function embed(texts: string[]): Promise<number[][]> {
