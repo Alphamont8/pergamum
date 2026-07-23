@@ -26,8 +26,7 @@ import { LiveEssayCanvas } from './LiveEssayCanvas'
 import type { ActivityLogEntry, BibChip, PossibleMatchChip } from './PipelineActivityRail'
 import { readApiErrorMessage, parseSseEventData, humanizeApiErrorText } from '@/lib/http/apiError'
 import { alignSentencesToEssay, countWords } from '@/lib/essay/alignSentences'
-import { reasoningImpliesCitations } from '@/lib/format/agentReasoning'
-import { formatAnalysisReasoning } from '@/lib/format/agentReasoning'
+import { formatAnalysisReasoning, isIncompleteAnalysisReasoning, reasoningImpliesCitations } from '@/lib/format/agentReasoning'
 import {
   analyzeStepCopy,
   feedDoneCopy,
@@ -715,10 +714,12 @@ export function CitationChat() {
           ? formatAnalysisReasoning(data.reasoning.trim())
           : null
       setAnalysisReasoning(reasoning)
-      if (loadedSentences.length === 0 && reasoning && reasoningImpliesCitations(reasoning)) {
-        throw new Error(
-          "We found claims in your draft but couldn't match them to sentences. Try again or shorten your draft.",
-        )
+      if (
+        loadedSentences.length === 0 &&
+        reasoning &&
+        (reasoningImpliesCitations(reasoning) || isIncompleteAnalysisReasoning(reasoning))
+      ) {
+        throw new Error("We couldn't finish analysis. Try again in a moment.")
       }
       if (analyzeStartedAtRef.current) {
         setAnalyzeDurationSec(

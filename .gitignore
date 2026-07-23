@@ -10,3 +10,10 @@ dist-ssr
 .env*
 !.env.example
 .cursor/debug*.log
+
+# Self-train harness outputs (keep *.mts scripts)
+scripts/self-train-*-report*.json
+scripts/self-train-*-run*.log
+scripts/self-train-*-spot.*
+scripts/self-train-analyze-5k-spot.*
+scripts/self-train-1k-e2e-run.log

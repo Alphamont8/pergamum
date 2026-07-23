@@ -22,19 +22,19 @@ function tokenize(s: string): string[] {
 /** Fuzzy locate: best essay window by token Jaccard when exact match fails. */
 function fuzzyLocateInEssay(essay: string, needle: string): string | null {
   const needleTokens = tokenize(needle)
-  if (needleTokens.length < 4) return null
+  if (needleTokens.length < 3) return null
 
   const essayNorm = collapseWs(essay)
   const essayTokens = tokenize(essay)
   if (essayTokens.length < needleTokens.length) return null
 
   const needleSet = new Set(needleTokens)
-  const window = Math.min(Math.max(needleTokens.length + 4, needleTokens.length), 48)
+  const window = Math.min(Math.max(needleTokens.length + 6, needleTokens.length), 64)
   let bestScore = 0
   let bestStart = -1
   let bestEnd = -1
 
-  for (let i = 0; i <= essayTokens.length - Math.min(4, needleTokens.length); i++) {
+  for (let i = 0; i <= essayTokens.length - Math.min(3, needleTokens.length); i++) {
     const end = Math.min(essayTokens.length, i + window)
     const windowTokens = essayTokens.slice(i, end)
     const windowSet = new Set(windowTokens)
@@ -45,7 +45,7 @@ function fuzzyLocateInEssay(essay: string, needle: string): string | null {
     const union = needleSet.size + windowSet.size - inter
     const jaccard = union > 0 ? inter / union : 0
     const coverage = inter / needleSet.size
-    const score = jaccard * 0.45 + coverage * 0.55
+    const score = jaccard * 0.4 + coverage * 0.6
     if (score > bestScore) {
       bestScore = score
       bestStart = i
@@ -53,8 +53,9 @@ function fuzzyLocateInEssay(essay: string, needle: string): string | null {
     }
   }
 
-  // Require strong overlap so we don't invent spans.
-  if (bestScore < 0.55 || bestStart < 0) return null
+  // Long stats sentences: accept slightly weaker overlap so soft wraps/paraphrase don't drop cites.
+  const minScore = needleTokens.length >= 12 ? 0.42 : 0.5
+  if (bestScore < minScore || bestStart < 0) return null
 
   const startToken = essayTokens[bestStart]
   const endToken = essayTokens[bestEnd - 1]
@@ -66,7 +67,6 @@ function fuzzyLocateInEssay(essay: string, needle: string): string | null {
   const endIdx = essayNorm.toLowerCase().lastIndexOf(endToken)
   if (endIdx < endSearchFrom) return null
 
-  // Map collapsed indices back approximately via original essay whitespace flex.
   const locatedCollapsed = essayNorm.slice(startIdx, endIdx + endToken.length)
   const exact = locateByCollapsed(essay, locatedCollapsed)
   return exact || locatedCollapsed.trim() || null

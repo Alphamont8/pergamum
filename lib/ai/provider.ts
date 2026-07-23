@@ -68,7 +68,7 @@ export interface CompletionOptions {
    * `full` tries text → generateObject → text retry.
    * `fast` stops after the first text completion (better under time budgets).
    */
-  structuredMode?: 'full' | 'fast'
+  structuredMode?: 'full' | 'fast' | 'object'
 }
 
 function toSdkMessages(messages: LLMMessage[]) {
@@ -412,6 +412,77 @@ export async function completeStructured<T extends z.ZodType>(
     maxTokens,
     timeoutMs: remainingTimeoutMs(),
   })
+
+  // Object-first: skip freeform text (main source of Phase A prose / non-JSON).
+  if (structuredMode === 'object') {
+    try {
+      const { object } = await generateObject({
+        model,
+        schema,
+        system,
+        messages: toSdkMessages(messages),
+        temperature,
+        maxTokens,
+        abortSignal: resolveAbortSignal({
+          abortSignal: options.abortSignal,
+          timeoutMs: remainingTimeoutMs(),
+        }),
+        providerOptions: GATEWAY_PROVIDER_OPTIONS,
+      })
+      return object
+    } catch (objectErr) {
+      errors.push(objectErr instanceof Error ? objectErr.message : 'generateObject failed')
+      if (isAbortError(objectErr)) {
+        console.warn('[llm] structured output failed:', errors.join(' | '))
+        throw new Error('That took too long. Try again or shorten your draft.')
+      }
+      const salvaged = await generateObjectSalvage(
+        schema,
+        messages,
+        options,
+        system,
+        temperature,
+        maxTokens,
+        remainingTimeoutMs,
+      )
+      if (salvaged != null) return salvaged
+      // Fall through to text+JSON parse once.
+      try {
+        const text = await completeNonEmpty(messages, {
+          ...attemptOptions(),
+          temperature: Math.max(0.05, temperature - 0.05),
+        })
+        return parseStructuredJson(schema, text)
+      } catch (textErr) {
+        errors.push(textErr instanceof Error ? textErr.message : 'text parse failed')
+        try {
+          const nudged = await completeNonEmpty(
+            [
+              ...messages,
+              {
+                role: 'user',
+                content:
+                  'Your previous reply was not valid JSON. Reply again with one JSON object only matching the required schema. No markdown, no commentary.',
+              },
+            ],
+            {
+              ...attemptOptions(),
+              temperature: Math.max(0.05, temperature - 0.1),
+            },
+          )
+          return parseStructuredJson(schema, nudged)
+        } catch (retryErr) {
+          errors.push(retryErr instanceof Error ? retryErr.message : 'nudged retry failed')
+          console.warn('[llm] structured output failed:', errors.join(' | '))
+          throw new Error(
+            humanizeStructuredParseError(
+              textErr instanceof Error ? textErr.message : 'The model did not return a JSON object.',
+            ),
+          )
+        }
+      }
+    }
+  }
 
   // Plain JSON completion is more reliable than gateway JSON-schema mode for DeepSeek.
   try {

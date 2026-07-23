@@ -22,10 +22,28 @@ export function formatAnalysisReasoning(raw: string): string {
   return text
 }
 
+/** True when reasoning clearly says no citations / no citable sentences. */
+function reasoningDeniesCitations(reasoning: string): boolean {
+  return (
+    /\b(no|zero|none|without|not)\b[\s\S]{0,24}\b(citation|citable|sentence|claim)/i.test(reasoning) ||
+    /\b(does not|do not|don't|didn't|need not|no need to)\b[\s\S]{0,40}\b(citation|cite)/i.test(
+      reasoning,
+    ) ||
+    /\b(opinion|reflection|personal)\b[\s\S]{0,40}\b(no|without|none)\b[\s\S]{0,24}\b(citation|fact)/i.test(
+      reasoning,
+    ) ||
+    /\bskip(?:ped|ping)?\s+all\b/i.test(reasoning) ||
+    /\bempty\s+list\b/i.test(reasoning)
+  )
+}
+
 /** True when model reasoning describes selected claims but the sentence list is empty. */
 export function reasoningImpliesCitations(reasoning: string): boolean {
   const r = reasoning.trim()
   if (!r) return false
+  if (isIncompleteAnalysisReasoning(r)) return true
+  // Negations like "No sentences require citations" must not trigger a hard fail.
+  if (reasoningDeniesCitations(r)) return false
   return (
     /\b(selected|found|identified|included|flagged|marked)\b[\s\S]{0,48}\b(sentence|claim|passage)/i.test(
       r,
@@ -35,6 +53,13 @@ export function reasoningImpliesCitations(reasoning: string): boolean {
     ) ||
     /\beach requires\b/i.test(r) ||
     /\ball sentences\b/i.test(r)
+  )
+}
+
+/** Internal failure copy must never be shown as a successful "no citations" result. */
+export function isIncompleteAnalysisReasoning(reasoning: string): boolean {
+  return /compact retry|incomplete model|couldn't finish analysis|could not finish analysis|failed to (?:parse|read)|did not return/i.test(
+    reasoning,
   )
 }
 
