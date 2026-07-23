@@ -8,6 +8,7 @@ import {
   VERIFY_SOURCE_SYSTEM,
 } from '@/lib/ai/prompts'
 import type { GenerationSettings } from '@/types'
+import { countWords } from '@/lib/billing/entitlements'
 import { reasoningImpliesCitations } from '@/lib/format/agentReasoning'
 import { mergeExistingCitation } from '@/lib/cite/existingCitation'
 import {
@@ -399,40 +400,57 @@ Rules:
   return materializeAnalyzedSentences(essay, compact.sentences, settings)
 }
 
-/** Pro long drafts: split before a single LLM call times out or truncates JSON output. */
-const ANALYZE_CHUNK_WORDS = 1800
-const ANALYZE_CHUNK_CONCURRENCY = 2
+/** Pro long drafts: parallel chunks keep each LLM call within time/output limits. */
+const ANALYZE_CHUNK_WORDS = 950
+/** Pro drafts above this word count use chunked analysis (Basic max is 1,000). */
+const ANALYZE_CHUNK_WORD_THRESHOLD = 900
+const ANALYZE_CHUNK_CONCURRENCY = 4
+/** Leave headroom inside the analyze route maxDuration budget. */
+const ANALYZE_ROUTE_BUDGET_MS = 270_000
 
-/** Longer single chunks emit large claim-metadata JSON; prefer lean schema first. */
-const LEAN_ANALYZE_CHAR_THRESHOLD = 2800
-const FULL_ANALYZE_TIMEOUT_MS = 75_000
-const LEAN_ANALYZE_TIMEOUT_MS = 110_000
-const COMPACT_ANALYZE_TIMEOUT_MS = 45_000
+/** Prefer lean schema when a single request would emit oversized JSON. */
+const LEAN_ANALYZE_CHAR_THRESHOLD = 2000
+const FULL_ANALYZE_TIMEOUT_MS = 55_000
+const LEAN_ANALYZE_TIMEOUT_MS = 80_000
+const COMPACT_ANALYZE_TIMEOUT_MS = 30_000
 
 type AnalyzeLlmResult = z.infer<typeof analyzeSchema>
 
+function splitLongTextByWords(text: string, maxWords: number): string[] {
+  const words = text.trim().split(/\s+/).filter(Boolean)
+  if (words.length <= maxWords) return [text.trim()]
+  const parts: string[] = []
+  for (let i = 0; i < words.length; i += maxWords) {
+    parts.push(words.slice(i, i + maxWords).join(' '))
+  }
+  return parts
+}
+
 function splitEssayIntoWordChunks(essay: string, maxWords: number): string[] {
   const paragraphs = essay.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean)
-  if (paragraphs.length === 0) return [essay]
+  const units =
+    paragraphs.length > 0
+      ? paragraphs.flatMap((paragraph) => splitLongTextByWords(paragraph, maxWords))
+      : splitLongTextByWords(essay, maxWords)
 
   const chunks: string[] = []
   let current: string[] = []
   let currentWords = 0
 
-  for (const paragraph of paragraphs) {
-    const paragraphWords = paragraph.split(/\s+/).filter(Boolean).length
-    if (currentWords > 0 && currentWords + paragraphWords > maxWords) {
+  for (const unit of units) {
+    const unitWords = countWords(unit)
+    if (currentWords > 0 && currentWords + unitWords > maxWords) {
       chunks.push(current.join('\n\n'))
-      current = [paragraph]
-      currentWords = paragraphWords
+      current = [unit]
+      currentWords = unitWords
     } else {
-      current.push(paragraph)
-      currentWords += paragraphWords
+      current.push(unit)
+      currentWords += unitWords
     }
   }
 
   if (current.length) chunks.push(current.join('\n\n'))
-  return chunks.length ? chunks : [essay]
+  return chunks.length ? chunks : splitLongTextByWords(essay, maxWords)
 }
 
 async function mapWithConcurrency<T, R>(
@@ -468,9 +486,17 @@ ${essay}
 """`
 }
 
-async function runAnalyzeLlm(essay: string, settings: GenerationSettings): Promise<AnalyzeLlmResult> {
+async function runAnalyzeLlm(
+  essay: string,
+  settings: GenerationSettings,
+  timeoutBudgetMs?: number,
+  options?: { forceLean?: boolean },
+): Promise<AnalyzeLlmResult> {
   const userContent = buildAnalyzeUserContent(essay, settings)
-  const preferLean = essay.length >= LEAN_ANALYZE_CHAR_THRESHOLD
+  const preferLean = options?.forceLean === true || essay.length >= LEAN_ANALYZE_CHAR_THRESHOLD
+  const budget = Math.max(20_000, timeoutBudgetMs ?? ANALYZE_ROUTE_BUDGET_MS)
+  const fullTimeout = Math.min(FULL_ANALYZE_TIMEOUT_MS, budget)
+  const leanTimeout = Math.min(LEAN_ANALYZE_TIMEOUT_MS, budget)
   let result: AnalyzeLlmResult | null = null
 
   if (!preferLean) {
@@ -482,7 +508,7 @@ async function runAnalyzeLlm(essay: string, settings: GenerationSettings): Promi
           system: ANALYZE_ESSAY_SYSTEM,
           temperature: 0.2,
           maxTokens: 8192,
-          timeoutMs: FULL_ANALYZE_TIMEOUT_MS,
+          timeoutMs: fullTimeout,
           structuredMode: 'fast',
         },
       )
@@ -506,8 +532,8 @@ async function runAnalyzeLlm(essay: string, settings: GenerationSettings): Promi
 If output length is a concern, prefer a compact JSON shape: medical, legal, reasoning, and sentences with index, text, claimType, claim, reason only.`,
         temperature: 0.15,
         maxTokens: 4096,
-        timeoutMs: LEAN_ANALYZE_TIMEOUT_MS,
-        structuredMode: preferLean ? 'full' : 'fast',
+        timeoutMs: leanTimeout,
+        structuredMode: 'fast',
       },
     )
     return {
@@ -525,13 +551,24 @@ async function finalizeEssayAnalysis(
   essay: string,
   settings: GenerationSettings,
   result: AnalyzeLlmResult,
+  timeoutBudgetMs?: number,
+  options?: { skipCompactRetry?: boolean },
 ): Promise<EssayAnalysis> {
   const inferred = inferSubjectFlags(essay)
   let sentences = materializeAnalyzedSentences(essay, result.sentences, settings)
 
-  if (sentences.length === 0 && reasoningImpliesCitations(result.reasoning ?? '')) {
+  const compactBudget = Math.max(
+    10_000,
+    Math.min(COMPACT_ANALYZE_TIMEOUT_MS, timeoutBudgetMs ?? COMPACT_ANALYZE_TIMEOUT_MS),
+  )
+
+  if (
+    !options?.skipCompactRetry &&
+    sentences.length === 0 &&
+    reasoningImpliesCitations(result.reasoning ?? '')
+  ) {
     console.warn('[analyze] reasoning implies citations but sentence list was empty; retrying compact list')
-    sentences = await retryCompactSentenceAnalyze(essay, settings, COMPACT_ANALYZE_TIMEOUT_MS)
+    sentences = await retryCompactSentenceAnalyze(essay, settings, compactBudget)
   }
 
   if (sentences.length === 0 && reasoningImpliesCitations(result.reasoning ?? '')) {
@@ -561,9 +598,17 @@ async function analyzeEssayChunked(
 ): Promise<EssayAnalysis> {
   const chunks = splitEssayIntoWordChunks(essay, ANALYZE_CHUNK_WORDS)
   console.info(`[analyze] chunking long essay into ${chunks.length} parts`)
+  const deadlineAt = Date.now() + ANALYZE_ROUTE_BUDGET_MS
+  const remainingBudget = () => Math.max(20_000, deadlineAt - Date.now())
+  const waves = Math.max(1, Math.ceil(chunks.length / ANALYZE_CHUNK_CONCURRENCY))
+  const perChunkBudget = () =>
+    Math.min(
+      LEAN_ANALYZE_TIMEOUT_MS,
+      Math.max(35_000, Math.floor(remainingBudget() / waves)),
+    )
 
   const chunkResults = await mapWithConcurrency(chunks, ANALYZE_CHUNK_CONCURRENCY, (chunk) =>
-    runAnalyzeLlm(chunk, settings),
+    runAnalyzeLlm(chunk, settings, perChunkBudget(), { forceLean: true }),
   )
 
   const seen = new Set<string>()
@@ -587,7 +632,9 @@ async function analyzeEssayChunked(
     sentences: mergedSentences,
   }
 
-  return finalizeEssayAnalysis(essay, settings, merged)
+  return finalizeEssayAnalysis(essay, settings, merged, remainingBudget(), {
+    skipCompactRetry: mergedSentences.length > 0,
+  })
 }
 
 export interface AnalyzeEssayOptions {
@@ -600,13 +647,21 @@ export async function analyzeEssayForCitations(
   settings: GenerationSettings,
   options: AnalyzeEssayOptions = {},
 ): Promise<EssayAnalysis> {
-  const words = essay.trim().split(/\s+/).filter(Boolean).length
-  if (options.allowChunked && words > ANALYZE_CHUNK_WORDS) {
+  const words = countWords(essay)
+  const deadlineAt = Date.now() + ANALYZE_ROUTE_BUDGET_MS
+  const remainingBudget = () => Math.max(20_000, deadlineAt - Date.now())
+
+  if (options.allowChunked && words > ANALYZE_CHUNK_WORD_THRESHOLD) {
     return analyzeEssayChunked(essay, settings)
   }
 
-  const result = await runAnalyzeLlm(essay, settings)
-  return finalizeEssayAnalysis(essay, settings, result)
+  const result = await runAnalyzeLlm(
+    essay,
+    settings,
+    remainingBudget(),
+    words > ANALYZE_CHUNK_WORD_THRESHOLD ? { forceLean: true } : undefined,
+  )
+  return finalizeEssayAnalysis(essay, settings, result, remainingBudget())
 }
 
 export async function extractClaimQuery(sentence: string): Promise<ClaimQuery> {

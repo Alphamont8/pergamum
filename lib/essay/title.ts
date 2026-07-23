@@ -157,6 +157,11 @@ ${excerpt}
   return heuristicTitle(excerpt)
 }
 
+/** Fast local title when LLM title generation would compete with analyze time budget. */
+export function heuristicEssayTitle(essay: string): string {
+  return heuristicTitle(essay)
+}
+
 function heuristicTitle(essay: string): string {
   const stop = new Set([
     'the',

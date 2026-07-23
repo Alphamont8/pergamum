@@ -141,7 +141,7 @@ export const PLAN_COMPARISON_SECTIONS: PlanComparisonSection[] = [
       {
         label: 'Draft Length',
         basic: 'Up to 1,000 words',
-        pro: 'Unlimited',
+        pro: 'Unlimited (4,000+ words)',
       },
       {
         label: 'In-Text Citations',

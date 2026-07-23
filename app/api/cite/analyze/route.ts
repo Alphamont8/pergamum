@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { analyzeEssayForCitations } from '@/lib/cite/analyze'
 import { finalizeNoCitationGeneration } from '@/lib/cite/finalizeNoCitations'
-import { ensureGenerationTitle, generateEssayTitle, needsGeneratedTitle } from '@/lib/essay/title'
+import { ensureGenerationTitle, heuristicEssayTitle, needsGeneratedTitle } from '@/lib/essay/title'
 import { alignSentencesToEssay } from '@/lib/essay/alignSentences'
 import { isLlmConfigured } from '@/lib/ai/provider'
 import { getUserCitesBalance } from '@/lib/cites/ledger'
@@ -229,14 +229,12 @@ export async function POST(request: Request) {
   }
 
   try {
-    const [analysis, title] = await Promise.all([
-      analyzeEssayForCitations(essay, settings as GenerationSettings, {
-        allowChunked: entitlements.maxWords == null,
-      }),
-      needsGeneratedTitle(generation.title)
-        ? generateEssayTitle(essay)
-        : Promise.resolve(generation.title as string),
-    ])
+    const analysis = await analyzeEssayForCitations(essay, settings as GenerationSettings, {
+      allowChunked: entitlements.maxWords == null,
+    })
+    const title = needsGeneratedTitle(generation.title)
+      ? heuristicEssayTitle(essay)
+      : (generation.title as string)
     const { sentences: rawSentences, medical, legal, reasoning } = analysis
     const sentences = alignSentencesToEssay(essay, rawSentences)
     const citesRequired = sentences.length
@@ -284,6 +282,8 @@ export async function POST(request: Request) {
         })
         .eq('id', generation.id)
     }
+
+    void ensureGenerationTitle(service, generation.id, essay, title)
 
     return NextResponse.json({
       generationId: generation.id,
