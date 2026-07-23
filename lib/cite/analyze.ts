@@ -399,10 +399,15 @@ Rules:
   return materializeAnalyzedSentences(essay, compact.sentences, settings)
 }
 
-<<<<<<< HEAD
 /** Pro long drafts: split before a single LLM call times out or truncates JSON output. */
 const ANALYZE_CHUNK_WORDS = 1800
 const ANALYZE_CHUNK_CONCURRENCY = 2
+
+/** Longer single chunks emit large claim-metadata JSON; prefer lean schema first. */
+const LEAN_ANALYZE_CHAR_THRESHOLD = 2800
+const FULL_ANALYZE_TIMEOUT_MS = 75_000
+const LEAN_ANALYZE_TIMEOUT_MS = 110_000
+const COMPACT_ANALYZE_TIMEOUT_MS = 45_000
 
 type AnalyzeLlmResult = z.infer<typeof analyzeSchema>
 
@@ -454,19 +459,6 @@ async function mapWithConcurrency<T, R>(
 
 function buildAnalyzeUserContent(essay: string, settings: GenerationSettings): string {
   return `Settings:
-=======
-/** Longer drafts emit large claim-metadata JSON and routinely blow past short function budgets. */
-const LEAN_ANALYZE_CHAR_THRESHOLD = 2800
-const FULL_ANALYZE_TIMEOUT_MS = 75_000
-const LEAN_ANALYZE_TIMEOUT_MS = 110_000
-const COMPACT_ANALYZE_TIMEOUT_MS = 45_000
-
-export async function analyzeEssayForCitations(
-  essay: string,
-  settings: GenerationSettings,
-): Promise<EssayAnalysis> {
-  const userContent = `Settings:
->>>>>>> a7902279dce75fd6bd1853c925805933bc43fb98
 - Prefer academic sources: ${settings.sourceTier === 'academic' ? 'yes, academic only' : 'academic preferred but news/web ok'}
 - Recency preference: ${settings.recency}
 
@@ -478,30 +470,11 @@ ${essay}
 
 async function runAnalyzeLlm(essay: string, settings: GenerationSettings): Promise<AnalyzeLlmResult> {
   const userContent = buildAnalyzeUserContent(essay, settings)
-
-<<<<<<< HEAD
-  try {
-    return await completeStructured(
-      analyzeSchema,
-      [{ role: 'user', content: userContent }],
-      {
-        system: ANALYZE_ESSAY_SYSTEM,
-        temperature: 0.2,
-        maxTokens: 8192,
-      },
-    )
-  } catch (fullErr) {
-    console.warn(
-      '[analyze] full schema failed, trying lean schema:',
-      fullErr instanceof Error ? fullErr.message : fullErr,
-    )
-=======
   const preferLean = essay.length >= LEAN_ANALYZE_CHAR_THRESHOLD
-  let result: z.infer<typeof analyzeSchema> | null = null
+  let result: AnalyzeLlmResult | null = null
 
   if (!preferLean) {
     try {
-      // Fast single-shot: claim metadata helps generate, but retries burn the whole budget.
       result = await completeStructured(
         analyzeSchema,
         [{ role: 'user', content: userContent }],
@@ -524,7 +497,6 @@ async function runAnalyzeLlm(essay: string, settings: GenerationSettings): Promi
   }
 
   if (!result) {
->>>>>>> a7902279dce75fd6bd1853c925805933bc43fb98
     const lean = await completeStructured(
       leanAnalyzeSchema,
       [{ role: 'user', content: userContent }],
@@ -545,6 +517,8 @@ If output length is a concern, prefer a compact JSON shape: medical, legal, reas
       sentences: lean.sentences,
     }
   }
+
+  return result
 }
 
 async function finalizeEssayAnalysis(
