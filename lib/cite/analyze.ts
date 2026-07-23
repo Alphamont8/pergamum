@@ -396,11 +396,60 @@ Rules:
   return materializeAnalyzedSentences(essay, compact.sentences, settings)
 }
 
-export async function analyzeEssayForCitations(
-  essay: string,
-  settings: GenerationSettings,
-): Promise<EssayAnalysis> {
-  const userContent = `Settings:
+/** Pro long drafts: split before a single LLM call times out or truncates JSON output. */
+const ANALYZE_CHUNK_WORDS = 1800
+const ANALYZE_CHUNK_CONCURRENCY = 2
+
+type AnalyzeLlmResult = z.infer<typeof analyzeSchema>
+
+function splitEssayIntoWordChunks(essay: string, maxWords: number): string[] {
+  const paragraphs = essay.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean)
+  if (paragraphs.length === 0) return [essay]
+
+  const chunks: string[] = []
+  let current: string[] = []
+  let currentWords = 0
+
+  for (const paragraph of paragraphs) {
+    const paragraphWords = paragraph.split(/\s+/).filter(Boolean).length
+    if (currentWords > 0 && currentWords + paragraphWords > maxWords) {
+      chunks.push(current.join('\n\n'))
+      current = [paragraph]
+      currentWords = paragraphWords
+    } else {
+      current.push(paragraph)
+      currentWords += paragraphWords
+    }
+  }
+
+  if (current.length) chunks.push(current.join('\n\n'))
+  return chunks.length ? chunks : [essay]
+}
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length)
+  let nextIndex = 0
+
+  async function worker() {
+    while (nextIndex < items.length) {
+      const index = nextIndex
+      nextIndex += 1
+      results[index] = await fn(items[index])
+    }
+  }
+
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, items.length) }, () => worker()),
+  )
+  return results
+}
+
+function buildAnalyzeUserContent(essay: string, settings: GenerationSettings): string {
+  return `Settings:
 - Prefer academic sources: ${settings.sourceTier === 'academic' ? 'yes, academic only' : 'academic preferred but news/web ok'}
 - Recency preference: ${settings.recency}
 
@@ -408,16 +457,18 @@ Essay:
 """
 ${essay}
 """`
+}
 
-  let result: z.infer<typeof analyzeSchema>
+async function runAnalyzeLlm(essay: string, settings: GenerationSettings): Promise<AnalyzeLlmResult> {
+  const userContent = buildAnalyzeUserContent(essay, settings)
+
   try {
-    result = await completeStructured(
+    return await completeStructured(
       analyzeSchema,
       [{ role: 'user', content: userContent }],
       {
         system: ANALYZE_ESSAY_SYSTEM,
         temperature: 0.2,
-        // Long essays emit large JSON; truncation was causing analyze failures.
         maxTokens: 8192,
       },
     )
@@ -437,14 +488,20 @@ If output length is a concern, prefer a compact JSON shape: medical, legal, reas
         maxTokens: 8192,
       },
     )
-    result = {
+    return {
       medical: lean.medical,
       legal: lean.legal,
       reasoning: lean.reasoning,
       sentences: lean.sentences,
     }
   }
+}
 
+async function finalizeEssayAnalysis(
+  essay: string,
+  settings: GenerationSettings,
+  result: AnalyzeLlmResult,
+): Promise<EssayAnalysis> {
   const inferred = inferSubjectFlags(essay)
   let sentences = materializeAnalyzedSentences(essay, result.sentences, settings)
 
@@ -459,7 +516,6 @@ If output length is a concern, prefer a compact JSON shape: medical, legal, reas
     )
   }
 
-  // Persist claim queries in background (best-effort).
   void Promise.all(
     sentences.map(async (s) => {
       const cq = claimQueryFromAnalyzed(s)
@@ -473,6 +529,60 @@ If output length is a concern, prefer a compact JSON shape: medical, legal, reas
     legal: result.legal === true || inferred.legal,
     reasoning: (result.reasoning ?? '').trim(),
   }
+}
+
+async function analyzeEssayChunked(
+  essay: string,
+  settings: GenerationSettings,
+): Promise<EssayAnalysis> {
+  const chunks = splitEssayIntoWordChunks(essay, ANALYZE_CHUNK_WORDS)
+  console.info(`[analyze] chunking long essay into ${chunks.length} parts`)
+
+  const chunkResults = await mapWithConcurrency(chunks, ANALYZE_CHUNK_CONCURRENCY, (chunk) =>
+    runAnalyzeLlm(chunk, settings),
+  )
+
+  const seen = new Set<string>()
+  const mergedSentences: Array<z.infer<typeof sentenceAnalyzeSchema>> = []
+  for (const result of chunkResults) {
+    for (const sentence of result.sentences) {
+      const key = (sentence.text ?? sentence.sentence ?? '').trim().toLowerCase()
+      if (!key || seen.has(key)) continue
+      seen.add(key)
+      mergedSentences.push(sentence)
+    }
+  }
+
+  const merged: AnalyzeLlmResult = {
+    medical: chunkResults.some((r) => r.medical === true),
+    legal: chunkResults.some((r) => r.legal === true),
+    reasoning: chunkResults
+      .map((r) => (r.reasoning ?? '').trim())
+      .filter(Boolean)
+      .join('\n\n'),
+    sentences: mergedSentences,
+  }
+
+  return finalizeEssayAnalysis(essay, settings, merged)
+}
+
+export interface AnalyzeEssayOptions {
+  /** When true, long Pro drafts are analyzed in paragraph chunks (parallel). */
+  allowChunked?: boolean
+}
+
+export async function analyzeEssayForCitations(
+  essay: string,
+  settings: GenerationSettings,
+  options: AnalyzeEssayOptions = {},
+): Promise<EssayAnalysis> {
+  const words = essay.trim().split(/\s+/).filter(Boolean).length
+  if (options.allowChunked && words > ANALYZE_CHUNK_WORDS) {
+    return analyzeEssayChunked(essay, settings)
+  }
+
+  const result = await runAnalyzeLlm(essay, settings)
+  return finalizeEssayAnalysis(essay, settings, result)
 }
 
 export async function extractClaimQuery(sentence: string): Promise<ClaimQuery> {

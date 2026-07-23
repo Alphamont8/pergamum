@@ -13,7 +13,7 @@ Pro includes Suggestions, deeper verification, faster generation, the full refer
 catalog, unlimited draft length, recency filters, sentence retry, Word/PDF/BibTeX/RIS export,
 Medical Database Search, Legal Database Search (US), and Real-Time Web Search Fallback.
 
-**Basic** keeps APA / MLA / Harvard, drafts up to **1,000 words**, and any-year source search.
+**Basic** keeps APA / MLA / Harvard, drafts up to **1,000 words**, and any-year source search. **Pro** has unlimited draft length.
 
 **200 Cites ≈ 8–10 standard essays** (typical essay uses ~15–25 flagged sentences).
 

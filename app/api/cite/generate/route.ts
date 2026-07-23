@@ -195,8 +195,13 @@ export async function POST(request: Request) {
           result: Awaited<ReturnType<typeof findCitationForSentence>>
         }
 
-        // Basic runs fewer parallel workers to reduce burst Exa/LLM spend.
-        const maxConcurrency = entitlements.planTier === 'basic' ? 2 : 4
+        // Pro long drafts: more workers to finish within the function time limit.
+        const maxConcurrency =
+          entitlements.planTier === 'basic'
+            ? 2
+            : sentences.length >= 30
+              ? 6
+              : 4
         const CONCURRENCY = Math.min(maxConcurrency, Math.max(1, sentences.length))
         const jobs: CiteJob[] = new Array(sentences.length)
         let cursor = 0

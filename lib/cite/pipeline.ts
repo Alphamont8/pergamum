@@ -57,8 +57,8 @@ const SUBJECT_OPENALEX_THRESHOLD = 8
 const MAX_CANDIDATES_TO_EMBED = 40
 /** Skip embeddings and keep provider order for pools this size or smaller. */
 const SKIP_EMBED_MAX = 3
-const MAX_CANDIDATES_TO_VERIFY = 10
-const MAX_CANDIDATES_TO_VERIFY_BASIC = 8
+const MAX_CANDIDATES_TO_VERIFY = 5
+const MAX_CANDIDATES_TO_VERIFY_BASIC = 4
 /** Pro Exa /search only when Perplexity empty or best sim below this. */
 const EXA_FALLBACK_SIMILARITY = 0.52
 /** Snippet length above which Exa /contents may use cached crawls. */

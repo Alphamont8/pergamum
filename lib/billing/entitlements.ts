@@ -26,7 +26,7 @@ export interface CitationEntitlements {
   allowExport: boolean
   /** Re-run a single sentence in Generation Theater. */
   allowSentenceRetry: boolean
-  /** Soft composer word cap (null = unlimited). */
+  /** Soft composer word cap for Basic (null = unlimited on Pro). */
   maxWords: number | null
 }
 

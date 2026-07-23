@@ -15,10 +15,10 @@ import {
 import { BASIC_MAX_WORDS } from '@/lib/billing/plans'
 import type { GenerationSettings } from '@/types'
 
-export const maxDuration = 120
+export const maxDuration = 300
 
 const bodySchema = z.object({
-  essay: z.string().min(40).max(100_000),
+  essay: z.string().min(40),
   settings: z.object({
     styleId: z.string(),
     inText: z.boolean(),
@@ -230,7 +230,9 @@ export async function POST(request: Request) {
 
   try {
     const [analysis, title] = await Promise.all([
-      analyzeEssayForCitations(essay, settings as GenerationSettings),
+      analyzeEssayForCitations(essay, settings as GenerationSettings, {
+        allowChunked: entitlements.maxWords == null,
+      }),
       needsGeneratedTitle(generation.title)
         ? generateEssayTitle(essay)
         : Promise.resolve(generation.title as string),
