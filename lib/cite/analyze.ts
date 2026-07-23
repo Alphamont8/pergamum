@@ -367,6 +367,7 @@ function materializeAnalyzedSentences(
 async function retryCompactSentenceAnalyze(
   essay: string,
   settings: GenerationSettings,
+  timeoutMs: number,
 ): Promise<AnalyzedSentence[]> {
   const userContent = `Settings:
 - Prefer academic sources: ${settings.sourceTier === 'academic' ? 'yes, academic only' : 'academic preferred but news/web ok'}
@@ -389,12 +390,20 @@ Rules:
 - Include every evidence-backed factual claim; skip opinions, plans, and thesis framing.
 - Do not paraphrase. Do not add fields beyond index and text.`,
       temperature: 0.1,
-      maxTokens: 8192,
+      maxTokens: 4096,
+      timeoutMs,
+      structuredMode: 'fast',
     },
   )
 
   return materializeAnalyzedSentences(essay, compact.sentences, settings)
 }
+
+/** Longer drafts emit large claim-metadata JSON and routinely blow past short function budgets. */
+const LEAN_ANALYZE_CHAR_THRESHOLD = 2800
+const FULL_ANALYZE_TIMEOUT_MS = 75_000
+const LEAN_ANALYZE_TIMEOUT_MS = 110_000
+const COMPACT_ANALYZE_TIMEOUT_MS = 45_000
 
 export async function analyzeEssayForCitations(
   essay: string,
@@ -409,23 +418,34 @@ Essay:
 ${essay}
 """`
 
-  let result: z.infer<typeof analyzeSchema>
-  try {
-    result = await completeStructured(
-      analyzeSchema,
-      [{ role: 'user', content: userContent }],
-      {
-        system: ANALYZE_ESSAY_SYSTEM,
-        temperature: 0.2,
-        // Long essays emit large JSON; truncation was causing analyze failures.
-        maxTokens: 8192,
-      },
-    )
-  } catch (fullErr) {
-    console.warn(
-      '[analyze] full schema failed, trying lean schema:',
-      fullErr instanceof Error ? fullErr.message : fullErr,
-    )
+  const preferLean = essay.length >= LEAN_ANALYZE_CHAR_THRESHOLD
+  let result: z.infer<typeof analyzeSchema> | null = null
+
+  if (!preferLean) {
+    try {
+      // Fast single-shot: claim metadata helps generate, but retries burn the whole budget.
+      result = await completeStructured(
+        analyzeSchema,
+        [{ role: 'user', content: userContent }],
+        {
+          system: ANALYZE_ESSAY_SYSTEM,
+          temperature: 0.2,
+          maxTokens: 8192,
+          timeoutMs: FULL_ANALYZE_TIMEOUT_MS,
+          structuredMode: 'fast',
+        },
+      )
+    } catch (fullErr) {
+      console.warn(
+        '[analyze] full schema failed, trying lean schema:',
+        fullErr instanceof Error ? fullErr.message : fullErr,
+      )
+    }
+  } else {
+    console.info('[analyze] long draft — using lean schema first')
+  }
+
+  if (!result) {
     const lean = await completeStructured(
       leanAnalyzeSchema,
       [{ role: 'user', content: userContent }],
@@ -434,7 +454,9 @@ ${essay}
 
 If output length is a concern, prefer a compact JSON shape: medical, legal, reasoning, and sentences with index, text, claimType, claim, reason only.`,
         temperature: 0.15,
-        maxTokens: 8192,
+        maxTokens: 4096,
+        timeoutMs: LEAN_ANALYZE_TIMEOUT_MS,
+        structuredMode: preferLean ? 'full' : 'fast',
       },
     )
     result = {
@@ -450,7 +472,7 @@ If output length is a concern, prefer a compact JSON shape: medical, legal, reas
 
   if (sentences.length === 0 && reasoningImpliesCitations(result.reasoning ?? '')) {
     console.warn('[analyze] reasoning implies citations but sentence list was empty; retrying compact list')
-    sentences = await retryCompactSentenceAnalyze(essay, settings)
+    sentences = await retryCompactSentenceAnalyze(essay, settings, COMPACT_ANALYZE_TIMEOUT_MS)
   }
 
   if (sentences.length === 0 && reasoningImpliesCitations(result.reasoning ?? '')) {
