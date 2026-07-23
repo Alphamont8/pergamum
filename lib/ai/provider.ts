@@ -60,6 +60,15 @@ export interface CompletionOptions {
   system?: string
   temperature?: number
   maxTokens?: number
+  /** Caller-owned abort (e.g. request shutdown). */
+  abortSignal?: AbortSignal
+  /** Soft per-attempt timeout. Combined with abortSignal when both are set. */
+  timeoutMs?: number
+  /**
+   * `full` tries text → generateObject → text retry.
+   * `fast` stops after the first text completion (better under time budgets).
+   */
+  structuredMode?: 'full' | 'fast'
 }
 
 function toSdkMessages(messages: LLMMessage[]) {
@@ -74,6 +83,23 @@ function toSdkMessages(messages: LLMMessage[]) {
 function withJsonSystem(system?: string): string {
   const base = system?.trim() ?? ''
   return base.includes('JSON object only') ? base : `${base}${JSON_REPLY_SUFFIX}`
+}
+
+function resolveAbortSignal(options: CompletionOptions): AbortSignal | undefined {
+  const signals: AbortSignal[] = []
+  if (options.abortSignal) signals.push(options.abortSignal)
+  if (options.timeoutMs && options.timeoutMs > 0) {
+    signals.push(AbortSignal.timeout(options.timeoutMs))
+  }
+  if (signals.length === 0) return undefined
+  if (signals.length === 1) return signals[0]
+  return AbortSignal.any(signals)
+}
+
+function isAbortError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false
+  if (err.name === 'AbortError' || err.name === 'TimeoutError') return true
+  return /\b(aborted|abort|timeout|timed out)\b/i.test(err.message)
 }
 
 function findJsonStart(text: string): { source: string; start: number } | null {
@@ -249,12 +275,14 @@ export async function complete(
   options: CompletionOptions = {},
 ): Promise<string> {
   const model = getModel()
+  const abortSignal = resolveAbortSignal(options)
   const { text } = await generateText({
     model,
     system: options.system,
     messages: toSdkMessages(messages),
     temperature: options.temperature ?? 0.35,
     maxTokens: options.maxTokens ?? 4096,
+    abortSignal,
     providerOptions: GATEWAY_PROVIDER_OPTIONS,
   })
   return text
@@ -266,6 +294,9 @@ async function completeNonEmpty(
 ): Promise<string> {
   const first = await complete(messages, options)
   if (first.trim()) return first
+  if (options.abortSignal?.aborted) {
+    throw new Error('The model request was aborted.')
+  }
   // Empty replies are intermittent on the gateway — one quiet retry.
   return complete(messages, {
     ...options,
@@ -282,14 +313,42 @@ export async function completeStructured<T extends z.ZodType>(
   const system = withJsonSystem(options.system)
   const temperature = options.temperature ?? 0.25
   const maxTokens = options.maxTokens ?? 4096
+  const structuredMode = options.structuredMode ?? 'full'
+  const deadlineAt =
+    options.timeoutMs && options.timeoutMs > 0 ? Date.now() + options.timeoutMs : null
   const errors: string[] = []
+
+  const remainingTimeoutMs = (): number | undefined => {
+    if (deadlineAt == null) return options.timeoutMs
+    return Math.max(1, deadlineAt - Date.now())
+  }
+
+  const attemptOptions = (): CompletionOptions => ({
+    ...options,
+    system,
+    temperature,
+    maxTokens,
+    timeoutMs: remainingTimeoutMs(),
+  })
 
   // Plain JSON completion is more reliable than gateway JSON-schema mode for DeepSeek.
   try {
-    const text = await completeNonEmpty(messages, { ...options, system, temperature, maxTokens })
+    const text = await completeNonEmpty(messages, attemptOptions())
     return parseStructuredJson(schema, text)
   } catch (err) {
     errors.push(err instanceof Error ? err.message : 'text parse failed')
+    if (isAbortError(err) || structuredMode === 'fast') {
+      console.warn('[llm] structured output failed:', errors.join(' | '))
+      throw isAbortError(err)
+        ? new Error('That took too long. Try again or shorten your draft.')
+        : err instanceof Error
+          ? err
+          : new Error("We couldn't read a valid analysis response from the model. Try again or shorten your draft.")
+    }
+  }
+
+  if (deadlineAt != null && Date.now() >= deadlineAt) {
+    throw new Error('That took too long. Try again or shorten your draft.')
   }
 
   try {
@@ -300,23 +359,38 @@ export async function completeStructured<T extends z.ZodType>(
       messages: toSdkMessages(messages),
       temperature,
       maxTokens,
+      abortSignal: resolveAbortSignal({
+        abortSignal: options.abortSignal,
+        timeoutMs: remainingTimeoutMs(),
+      }),
       providerOptions: GATEWAY_PROVIDER_OPTIONS,
     })
     return object
   } catch (objectErr) {
     errors.push(objectErr instanceof Error ? objectErr.message : 'generateObject failed')
+    if (isAbortError(objectErr)) {
+      console.warn('[llm] structured output failed:', errors.join(' | '))
+      throw new Error('That took too long. Try again or shorten your draft.')
+    }
+  }
+
+  if (deadlineAt != null && Date.now() >= deadlineAt) {
+    throw new Error('That took too long. Try again or shorten your draft.')
   }
 
   try {
     const text = await completeNonEmpty(messages, {
-      ...options,
-      system,
+      ...attemptOptions(),
       temperature: Math.max(0.1, temperature - 0.05),
       maxTokens: Math.max(maxTokens, 8192),
     })
     return parseStructuredJson(schema, text)
   } catch (err) {
     errors.push(err instanceof Error ? err.message : 'retry parse failed')
+    if (isAbortError(err)) {
+      console.warn('[llm] structured output failed:', errors.join(' | '))
+      throw new Error('That took too long. Try again or shorten your draft.')
+    }
   }
 
   console.warn('[llm] structured output failed:', errors.join(' | '))
