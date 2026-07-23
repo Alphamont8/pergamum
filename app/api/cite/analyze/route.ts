@@ -15,7 +15,7 @@ import {
 import { BASIC_MAX_WORDS } from '@/lib/billing/plans'
 import type { GenerationSettings } from '@/types'
 
-export const maxDuration = 120
+export const maxDuration = 300
 
 const bodySchema = z.object({
   essay: z.string().min(40).max(100_000),

@@ -24,7 +24,7 @@ import type { GenerationSettings, SourceRecency, SourceTier } from '@/types'
 import { AgentTimeline, type FeedPhaseTask } from './AgentTimeline'
 import { LiveEssayCanvas } from './LiveEssayCanvas'
 import type { ActivityLogEntry, BibChip, PossibleMatchChip } from './PipelineActivityRail'
-import { readApiErrorMessage, parseSseEventData } from '@/lib/http/apiError'
+import { readApiErrorMessage, parseSseEventData, humanizeApiErrorText } from '@/lib/http/apiError'
 import { alignSentencesToEssay, countWords } from '@/lib/essay/alignSentences'
 import { reasoningImpliesCitations } from '@/lib/format/agentReasoning'
 import { formatAnalysisReasoning } from '@/lib/format/agentReasoning'
@@ -657,11 +657,8 @@ export function CitationChat() {
         data = JSON.parse(analyzeBody) as typeof data
       } catch {
         if (!res.ok) {
-          const trimmed = analyzeBody.trim()
           throw new Error(
-            trimmed && trimmed.length <= 400
-              ? trimmed
-              : 'We couldn\u2019t analyze your draft.',
+            humanizeApiErrorText(analyzeBody, 'We couldn\u2019t analyze your draft.'),
           )
         }
         throw new Error('We couldn\u2019t analyze your draft.')
@@ -673,7 +670,12 @@ export function CitationChat() {
           setStatusMessage('')
           return
         }
-        throw new Error(data.error ?? 'We couldn\u2019t analyze your draft.')
+        throw new Error(
+          humanizeApiErrorText(
+            data.error ?? '',
+            'We couldn\u2019t analyze your draft.',
+          ),
+        )
       }
       if (!data.generationId) {
         throw new Error('We couldn\u2019t analyze your draft.')
