@@ -38,6 +38,8 @@ function SentenceQueue({
   possibleMatches,
   onPick,
   picking,
+  onFocus,
+  focusIndex,
 }: {
   sentences: TimelineQueueSentence[]
   live: Record<number, LiveSentenceState>
@@ -45,6 +47,8 @@ function SentenceQueue({
   possibleMatches?: Record<number, PossibleMatchChip[]>
   onPick?: (sentenceIndex: number, matchIndex: number) => void
   picking?: number | null
+  onFocus?: (sentenceIndex: number) => void
+  focusIndex?: number | null
 }) {
   if (!sentences.length) return null
 
@@ -67,15 +71,21 @@ function SentenceQueue({
           return (
             <li
               key={sentence.index}
-              className={`agent-tl__chip agent-tl__chip--${status}`}
+              className={`agent-tl__chip agent-tl__chip--${status} ${focusIndex === sentence.index ? 'is-focused' : ''}`.trim()}
             >
-              <div className="agent-tl__chip-meta">
-                <span className="agent-tl__chip-index">Sentence {sentence.index + 1}</span>
-                <span className={`agent-tl__chip-status agent-tl__chip-status--${status}`}>
-                  {statusLabel}
-                </span>
-              </div>
-              <p className="agent-tl__chip-text">{sentence.text}</p>
+              <button
+                type="button"
+                className="agent-tl__chip-focus"
+                onClick={() => onFocus?.(sentence.index)}
+              >
+                <div className="agent-tl__chip-meta">
+                  <span className="agent-tl__chip-index">Sentence {sentence.index + 1}</span>
+                  <span className={`agent-tl__chip-status agent-tl__chip-status--${status}`}>
+                    {statusLabel}
+                  </span>
+                </div>
+                <p className="agent-tl__chip-text">{sentence.text}</p>
+              </button>
               {status === 'failed' && state?.missReason ? (
                 <p className="agent-tl__chip-miss">{state.missReason}</p>
               ) : null}
@@ -159,6 +169,8 @@ export function AgentTimeline({
   possibleMatches,
   onPickMatch,
   pickingMatch = null,
+  onSentenceFocus,
+  focusSentenceIndex = null,
   footer,
   footerCentered = false,
   liveClockMs,
@@ -172,6 +184,8 @@ export function AgentTimeline({
   possibleMatches?: Record<number, PossibleMatchChip[]>
   onPickMatch?: (sentenceIndex: number, matchIndex: number) => void
   pickingMatch?: number | null
+  onSentenceFocus?: (sentenceIndex: number) => void
+  focusSentenceIndex?: number | null
   footer?: ReactNode
   footerCentered?: boolean
   /** Forces re-render while Analysis/Generation timers tick. */
@@ -226,6 +240,8 @@ export function AgentTimeline({
             possibleMatches={possibleMatches}
             onPick={onPickMatch}
             picking={pickingMatch}
+            onFocus={onSentenceFocus}
+            focusIndex={focusSentenceIndex}
           />
         ) : null}
       </div>

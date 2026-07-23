@@ -226,6 +226,7 @@ export function CitationChat() {
   )
   const [analysisReasoning, setAnalysisReasoning] = useState<string | null>(null)
   const [analyzeDurationSec, setAnalyzeDurationSec] = useState<number | null>(null)
+  const [feedFocusIndex, setFeedFocusIndex] = useState<number | null>(null)
   const analyzeStartedAtRef = useRef<number | null>(null)
   const [generateDurationSec, setGenerateDurationSec] = useState<number | null>(null)
   const generateStartedAtRef = useRef<number | null>(null)
@@ -586,6 +587,7 @@ export function CitationChat() {
     setActivityLog([])
     setLiveBibliography([])
     setPossibleMatches({})
+    setFeedFocusIndex(null)
     setStatusMessage('Analyzing your draft for claims that need a source…')
     setAnalysisStatus('Analyzing your draft for claims that need a source…')
 
@@ -1132,6 +1134,7 @@ export function CitationChat() {
   const theaterEssay = result?.originalEssay || essay
 
   const focusIndex =
+    feedFocusIndex ??
     activeIndexes[0] ??
     (progress.current > 0
       ? sentences.find((s) => theaterLive[s.index]?.status === 'done' || theaterLive[s.index]?.status === 'failed')
@@ -1302,10 +1305,12 @@ export function CitationChat() {
   ])
 
   const showFeedSentences =
-    phase === 'quoted' ||
-    phase === 'theater_done' ||
-    phase === 'error' ||
-    phase === 'done'
+    sentences.length > 0 &&
+    (phase === 'quoted' ||
+      phase === 'generating' ||
+      phase === 'theater_done' ||
+      phase === 'error' ||
+      phase === 'done')
 
   const onViewDraft = useCallback(() => {
     if (!generationId) return
@@ -1460,7 +1465,9 @@ export function CitationChat() {
                     sentences={sentences}
                     live={theaterLive}
                     focusIndex={
-                      phase === 'generating' || pickingMatch != null ? focusIndex : null
+                      phase === 'generating' || phase === 'quoted' || pickingMatch != null
+                        ? focusIndex
+                        : null
                     }
                     styleId={settings.styleId}
                   />
@@ -1479,6 +1486,8 @@ export function CitationChat() {
                 live={theaterLive}
                 stages={sentenceStages}
                 possibleMatches={possibleMatches}
+                focusSentenceIndex={focusIndex}
+                onSentenceFocus={setFeedFocusIndex}
                 onPickMatch={(sentenceIndex, matchIndex) => {
                   void pickMatch(sentenceIndex, matchIndex)
                 }}

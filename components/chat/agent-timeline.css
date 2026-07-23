@@ -162,9 +162,33 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 10px 12px;
+  padding: 0;
   border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--fg) 3%, var(--bg));
+}
+
+.agent-tl__chip.is-focused {
+  outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  outline-offset: 1px;
+}
+
+.agent-tl__chip-focus {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  margin: 0;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.agent-tl__chip-focus:hover {
+  background: color-mix(in srgb, var(--accent) 5%, transparent);
 }
 
 .agent-tl__chip--active {

@@ -176,23 +176,7 @@ const leanAnalyzeSchema = z.object({
   medical: z.preprocess((v) => v === true || v === 'true', z.boolean()).default(false),
   legal: z.preprocess((v) => v === true || v === 'true', z.boolean()).default(false),
   reasoning: z.preprocess((v) => (typeof v === 'string' ? v : ''), z.string()).default(''),
-  sentences: z.preprocess(
-    preprocessSentenceList,
-    z.array(
-    z.object({
-      index: z.preprocess((val) => {
-        if (typeof val === 'string' && val.trim()) return Number(val)
-        return val
-      }, z.number().int().nonnegative()),
-      text: optionalNonEmptyString,
-      sentence: optionalNonEmptyString,
-      claim: z.string().optional(),
-      claimType: claimTypeField.default('mixed'),
-      reason: z.string().optional(),
-      existingCitation: existingCitationSchema,
-    }),
-    ),
-  ),
+  sentences: z.preprocess(preprocessSentenceList, z.array(sentenceAnalyzeSchema)),
 })
 
 const compactSentenceListSchema = z.object({
@@ -486,14 +470,32 @@ ${essay}
 """`
 }
 
+function estimateMinimumCitableSentences(essay: string): number {
+  const words = countWords(essay)
+  const statHits =
+    essay.match(
+      /\b\d+(?:[.,]\d+)?%|\b\d{1,3}(?:,\d{3})+(?:\.\d+)?\b|\$\d[\d,.]*|statista|according to|survey|reported that|accounts for|reached \$/gi,
+    )?.length ?? 0
+  const fromWords = Math.max(1, Math.floor(words / 140))
+  const fromStats =
+    statHits >= 6
+      ? Math.ceil(statHits * 0.65)
+      : statHits >= 3
+        ? Math.ceil(statHits * 0.5)
+        : statHits >= 1 && words > 350
+          ? 2
+          : 0
+  return Math.min(60, Math.max(fromWords, fromStats))
+}
+
 async function runAnalyzeLlm(
   essay: string,
   settings: GenerationSettings,
   timeoutBudgetMs?: number,
-  options?: { forceLean?: boolean },
+  options?: { chunked?: boolean },
 ): Promise<AnalyzeLlmResult> {
   const userContent = buildAnalyzeUserContent(essay, settings)
-  const preferLean = options?.forceLean === true || essay.length >= LEAN_ANALYZE_CHAR_THRESHOLD
+  const preferLean = !options?.chunked && essay.length >= LEAN_ANALYZE_CHAR_THRESHOLD
   const budget = Math.max(20_000, timeoutBudgetMs ?? ANALYZE_ROUTE_BUDGET_MS)
   const fullTimeout = Math.min(FULL_ANALYZE_TIMEOUT_MS, budget)
   const leanTimeout = Math.min(LEAN_ANALYZE_TIMEOUT_MS, budget)
@@ -552,7 +554,6 @@ async function finalizeEssayAnalysis(
   settings: GenerationSettings,
   result: AnalyzeLlmResult,
   timeoutBudgetMs?: number,
-  options?: { skipCompactRetry?: boolean },
 ): Promise<EssayAnalysis> {
   const inferred = inferSubjectFlags(essay)
   let sentences = materializeAnalyzedSentences(essay, result.sentences, settings)
@@ -561,14 +562,22 @@ async function finalizeEssayAnalysis(
     10_000,
     Math.min(COMPACT_ANALYZE_TIMEOUT_MS, timeoutBudgetMs ?? COMPACT_ANALYZE_TIMEOUT_MS),
   )
+  const minExpected = estimateMinimumCitableSentences(essay)
+  const underRecalled =
+    sentences.length < Math.max(3, Math.floor(minExpected * 0.45)) &&
+    (reasoningImpliesCitations(result.reasoning ?? '') || minExpected >= 6)
 
-  if (
-    !options?.skipCompactRetry &&
-    sentences.length === 0 &&
-    reasoningImpliesCitations(result.reasoning ?? '')
-  ) {
+  if (sentences.length === 0 && reasoningImpliesCitations(result.reasoning ?? '')) {
     console.warn('[analyze] reasoning implies citations but sentence list was empty; retrying compact list')
     sentences = await retryCompactSentenceAnalyze(essay, settings, compactBudget)
+  } else if (underRecalled) {
+    console.warn(
+      `[analyze] low recall (${sentences.length}/${minExpected} expected); retrying compact list`,
+    )
+    const compact = await retryCompactSentenceAnalyze(essay, settings, compactBudget)
+    if (compact.length > sentences.length) {
+      sentences = compact
+    }
   }
 
   if (sentences.length === 0 && reasoningImpliesCitations(result.reasoning ?? '')) {
@@ -608,7 +617,7 @@ async function analyzeEssayChunked(
     )
 
   const chunkResults = await mapWithConcurrency(chunks, ANALYZE_CHUNK_CONCURRENCY, (chunk) =>
-    runAnalyzeLlm(chunk, settings, perChunkBudget(), { forceLean: true }),
+    runAnalyzeLlm(chunk, settings, perChunkBudget(), { chunked: true }),
   )
 
   const seen = new Set<string>()
@@ -632,9 +641,7 @@ async function analyzeEssayChunked(
     sentences: mergedSentences,
   }
 
-  return finalizeEssayAnalysis(essay, settings, merged, remainingBudget(), {
-    skipCompactRetry: mergedSentences.length > 0,
-  })
+  return finalizeEssayAnalysis(essay, settings, merged, remainingBudget())
 }
 
 export interface AnalyzeEssayOptions {
@@ -655,12 +662,7 @@ export async function analyzeEssayForCitations(
     return analyzeEssayChunked(essay, settings)
   }
 
-  const result = await runAnalyzeLlm(
-    essay,
-    settings,
-    remainingBudget(),
-    words > ANALYZE_CHUNK_WORD_THRESHOLD ? { forceLean: true } : undefined,
-  )
+  const result = await runAnalyzeLlm(essay, settings, remainingBudget())
   return finalizeEssayAnalysis(essay, settings, result, remainingBudget())
 }
 
